@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { UserUseCase } from '../usecase/UserUseCase';
 import { GetLogger } from '../utils/loggerContext';
+import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
 
 const router = Router();
 const userUseCase = new UserUseCase();
@@ -18,7 +19,7 @@ const handleValidationErrors = (req: Request, res: Response, next: any) => {
 // GET /api/users - Get all users
 router.get('/', async (req: Request, res: Response) => {
   const logger = GetLogger();
-  logger.info('GET /api/users - Get all users');
+  logger?.info('GET /api/users - Get all users');
   try {
     const users = await userUseCase.GetAllUsers();
     logger?.info('Successfully retrieved all users', { count: users.length });
@@ -38,13 +39,14 @@ router.get(
   ],
   async (req: Request, res: Response) => {
     const logger = GetLogger();
-    logger?.info('GET /api/users/:id - Get user by ID', { id: req.params.id });
+    const id = req.params.id as string;
+    logger?.info('GET /api/users/:id - Get user by ID', { id });
     try {
-      const user = await userUseCase.GetUserById(req.params.id);
-      logger?.info('Successfully retrieved user', { id: req.params.id });
+      const user = await userUseCase.GetUserById(id);
+      logger?.info('Successfully retrieved user', { id });
       res.json(user);
     } catch (error: any) {
-      logger?.error('Error retrieving user', error, { id: req.params.id });
+      logger?.error('Error retrieving user', error, { id });
       if (error.message === 'User not found') {
         res.status(404).json({ error: error.message });
       } else {
@@ -54,10 +56,12 @@ router.get(
   }
 );
 
-// POST /api/users - Create new user
+// POST /api/users - Create new user (requires level > 50)
 router.post(
   '/',
   [
+    AuthenticateMiddleware,
+    RequireLevel(51),
     body('username').notEmpty().withMessage('Username is required').isString().isLength({ min: 3, max: 50 }),
     body('email').notEmpty().withMessage('Email is required').isEmail(),
     body('name').notEmpty().withMessage('Name is required').isString(),
@@ -98,13 +102,14 @@ router.put(
   ],
   async (req: Request, res: Response) => {
     const logger = GetLogger();
-    logger?.info('PUT /api/users/:id - Update user', { id: req.params.id, body: { ...req.body, password: req.body.password ? '[REDACTED]' : undefined } });
+    const id = req.params.id as string;
+    logger?.info('PUT /api/users/:id - Update user', { id, body: { ...req.body, password: req.body.password ? '[REDACTED]' : undefined } });
     try {
-      const user = await userUseCase.UpdateUser(req.params.id, req.body);
-      logger?.info('Successfully updated user', { id: req.params.id });
+      const user = await userUseCase.UpdateUser(id, req.body);
+      logger?.info('Successfully updated user', { id });
       res.json(user);
     } catch (error: any) {
-      logger?.error('Error updating user', error, { id: req.params.id });
+      logger?.error('Error updating user', error, { id });
       if (error.message === 'User not found') {
         res.status(404).json({ error: error.message });
       } else {
@@ -123,13 +128,14 @@ router.delete(
   ],
   async (req: Request, res: Response) => {
     const logger = GetLogger();
-    logger?.info('DELETE /api/users/:id - Delete user', { id: req.params.id });
+    const id = req.params.id as string;
+    logger?.info('DELETE /api/users/:id - Delete user', { id });
     try {
-      await userUseCase.DeleteUser(req.params.id);
-      logger?.info('Successfully deleted user', { id: req.params.id });
+      await userUseCase.DeleteUser(id);
+      logger?.info('Successfully deleted user', { id });
       res.status(204).send();
     } catch (error: any) {
-      logger?.error('Error deleting user', error, { id: req.params.id });
+      logger?.error('Error deleting user', error, { id });
       if (error.message === 'User not found') {
         res.status(404).json({ error: error.message });
       } else {

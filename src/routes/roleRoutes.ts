@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { RoleUseCase } from '../usecase/RoleUseCase';
 import { GetLogger } from '../utils/loggerContext';
+import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
 
 const router = Router();
 const roleUseCase = new RoleUseCase();
@@ -55,10 +56,12 @@ router.get(
   }
 );
 
-// POST /api/roles - Create new role
+// POST /api/roles - Create new role (requires level > 50)
 router.post(
   '/',
   [
+    AuthenticateMiddleware,
+    RequireLevel(51),
     body('name').notEmpty().withMessage('Name is required').isString(),
     body('level').isInt({ min: 0 }).withMessage('Level must be a non-negative integer'),
     body('created_by').optional().isUUID().withMessage('Invalid created_by UUID'),

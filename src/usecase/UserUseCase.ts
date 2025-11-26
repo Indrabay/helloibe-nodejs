@@ -1,6 +1,7 @@
 import { UserRepository } from '../repository/UserRepository';
 import { User, UserCreationAttributes, UserAttributes } from '../models/User';
 import { GetLogger } from '../utils/loggerContext';
+import bcrypt from 'bcrypt';
 
 export class UserUseCase {
   private userRepository: UserRepository;
@@ -53,6 +54,10 @@ export class UserUseCase {
       throw new Error('Password is required');
     }
 
+    // Hash password before storing
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const userData = { ...data, password: hashedPassword };
+
     // Check if username already exists
     const existingUserByUsername = await this.userRepository.FindByUsername(data.username);
     if (existingUserByUsername) {
@@ -61,13 +66,13 @@ export class UserUseCase {
     }
 
     // Check if email already exists
-    const existingUserByEmail = await this.userRepository.FindByEmail(data.email);
+    const existingUserByEmail = await this.userRepository.FindByEmail(userData.email);
     if (existingUserByEmail) {
-      logger?.warn('UserUseCase.CreateUser - Email already exists', { email: data.email });
+      logger?.warn('UserUseCase.CreateUser - Email already exists', { email: userData.email });
       throw new Error('Email already exists');
     }
 
-    const user = await this.userRepository.Create(data);
+    const user = await this.userRepository.Create(userData);
     logger?.info('UserUseCase.CreateUser - Completed', { id: user.id, username: user.username });
     return user;
   }
@@ -98,7 +103,13 @@ export class UserUseCase {
       }
     }
 
-    const [affectedCount, updatedUsers] = await this.userRepository.Update(id, data);
+    // Hash password if being updated
+    const updateData = { ...data };
+    if (data.password) {
+      updateData.password = await bcrypt.hash(data.password, 10);
+    }
+
+    const [affectedCount, updatedUsers] = await this.userRepository.Update(id, updateData);
     if (affectedCount === 0 || !updatedUsers[0]) {
       logger?.warn('UserUseCase.UpdateUser - User not found', { id });
       throw new Error('User not found');

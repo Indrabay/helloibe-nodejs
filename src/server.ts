@@ -6,6 +6,7 @@ import { connectDatabase, closeDatabase } from './database';
 import roleRoutes from './routes/roleRoutes';
 import storeRoutes from './routes/storeRoutes';
 import userRoutes from './routes/userRoutes';
+import authRoutes from './routes/authRoutes';
 import { requestIdMiddleware } from './middleware/requestId';
 
 const app = express();
@@ -23,6 +24,7 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/users', userRoutes);

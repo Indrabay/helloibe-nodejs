@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, param, validationResult } from 'express-validator';
 import { StoreUseCase } from '../usecase/StoreUseCase';
 import { GetLogger } from '../utils/loggerContext';
+import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
 
 const router = Router();
 const storeUseCase = new StoreUseCase();
@@ -18,7 +19,7 @@ const handleValidationErrors = (req: Request, res: Response, next: any) => {
 // GET /api/stores - Get all stores
 router.get('/', async (req: Request, res: Response) => {
   const logger = GetLogger();
-  logger.info('GET /api/stores - Get all stores');
+  logger?.info('GET /api/stores - Get all stores');
   try {
     const stores = await storeUseCase.GetAllStores();
     logger?.info('Successfully retrieved all stores', { count: stores.length });
@@ -38,13 +39,14 @@ router.get(
   ],
   async (req: Request, res: Response) => {
     const logger = GetLogger();
-    logger?.info('GET /api/stores/:id - Get store by ID', { id: req.params.id });
+    const id = req.params.id as string;
+    logger?.info('GET /api/stores/:id - Get store by ID', { id });
     try {
-      const store = await storeUseCase.GetStoreById(req.params.id);
-      logger?.info('Successfully retrieved store', { id: req.params.id });
+      const store = await storeUseCase.GetStoreById(id);
+      logger?.info('Successfully retrieved store', { id });
       res.json(store);
     } catch (error: any) {
-      logger?.error('Error retrieving store', error, { id: req.params.id });
+      logger?.error('Error retrieving store', error, { id });
       if (error.message === 'Store not found') {
         res.status(404).json({ error: error.message });
       } else {
@@ -54,10 +56,12 @@ router.get(
   }
 );
 
-// POST /api/stores - Create new store
+// POST /api/stores - Create new store (requires level > 50)
 router.post(
   '/',
   [
+    AuthenticateMiddleware,
+    RequireLevel(51),
     body('name').notEmpty().withMessage('Name is required').isString(),
     body('address').optional().isString(),
     body('phone').optional().isString(),
@@ -92,13 +96,14 @@ router.put(
   ],
   async (req: Request, res: Response) => {
     const logger = GetLogger();
-    logger?.info('PUT /api/stores/:id - Update store', { id: req.params.id, body: req.body });
+    const id = req.params.id as string;
+    logger?.info('PUT /api/stores/:id - Update store', { id, body: req.body });
     try {
-      const store = await storeUseCase.UpdateStore(req.params.id, req.body);
-      logger?.info('Successfully updated store', { id: req.params.id });
+      const store = await storeUseCase.UpdateStore(id, req.body);
+      logger?.info('Successfully updated store', { id });
       res.json(store);
     } catch (error: any) {
-      logger?.error('Error updating store', error, { id: req.params.id });
+      logger?.error('Error updating store', error, { id });
       if (error.message === 'Store not found') {
         res.status(404).json({ error: error.message });
       } else {
@@ -117,13 +122,14 @@ router.delete(
   ],
   async (req: Request, res: Response) => {
     const logger = GetLogger();
-    logger?.info('DELETE /api/stores/:id - Delete store', { id: req.params.id });
+    const id = req.params.id as string;
+    logger?.info('DELETE /api/stores/:id - Delete store', { id });
     try {
-      await storeUseCase.DeleteStore(req.params.id);
-      logger?.info('Successfully deleted store', { id: req.params.id });
+      await storeUseCase.DeleteStore(id);
+      logger?.info('Successfully deleted store', { id });
       res.status(204).send();
     } catch (error: any) {
-      logger?.error('Error deleting store', error, { id: req.params.id });
+      logger?.error('Error deleting store', error, { id });
       if (error.message === 'Store not found') {
         res.status(404).json({ error: error.message });
       } else {
