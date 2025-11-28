@@ -17,6 +17,14 @@ export class RoleUseCase {
     return roles;
   }
 
+  async GetAllRolesWithPagination(limit: number, offset: number): Promise<{ roles: Role[]; total: number }> {
+    const logger = GetLogger();
+    logger?.debug('RoleUseCase.GetAllRolesWithPagination - Starting', { limit, offset });
+    const result = await this.roleRepository.FindAllWithPagination(limit, offset);
+    logger?.debug('RoleUseCase.GetAllRolesWithPagination - Completed', { count: result.roles.length, total: result.total });
+    return result;
+  }
+
   async GetRoleById(id: string): Promise<Role | null> {
     const logger = GetLogger();
     logger?.debug('RoleUseCase.GetRoleById - Starting', { id });

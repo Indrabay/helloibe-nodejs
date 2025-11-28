@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { body, param, validationResult } from 'express-validator';
+import { body, param, query, validationResult } from 'express-validator';
 import { StoreUseCase } from '../usecase/StoreUseCase';
 import { GetLogger } from '../utils/loggerContext';
 import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
+import { formatModelWithUserRelations, formatModelsWithUserRelations } from '../utils/formatResponse';
 
 const router = Router();
 const storeUseCase = new StoreUseCase();
@@ -16,19 +17,38 @@ const handleValidationErrors = (req: Request, res: Response, next: any) => {
   next();
 };
 
-// GET /api/stores - Get all stores
-router.get('/', async (req: Request, res: Response) => {
-  const logger = GetLogger();
-  logger?.info('GET /api/stores - Get all stores');
-  try {
-    const stores = await storeUseCase.GetAllStores();
-    logger?.info('Successfully retrieved all stores', { count: stores.length });
-    res.json(stores);
-  } catch (error: any) {
-    logger?.error('Error retrieving stores', error);
-    res.status(500).json({ error: error.message });
+// GET /api/stores - Get all stores with pagination and search
+router.get(
+  '/',
+  [
+    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+    query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer'),
+    query('name').optional().isString().withMessage('Name must be a string'),
+    query('phone').optional().isString().withMessage('Phone must be a string'),
+    handleValidationErrors,
+  ],
+  async (req: Request, res: Response) => {
+    const logger = GetLogger();
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+    const searchName = req.query.name as string | undefined;
+    const searchPhone = req.query.phone as string | undefined;
+    logger?.info('GET /api/stores - Get all stores with pagination and search', { limit, offset, searchName, searchPhone });
+    try {
+      const { stores, total } = await storeUseCase.GetAllStoresWithPagination(limit, offset, searchName, searchPhone);
+      logger?.info('Successfully retrieved stores', { count: stores.length, total, limit, offset, searchName, searchPhone });
+      res.json({
+        data: formatModelsWithUserRelations(stores),
+        total,
+        limit,
+        offset,
+      });
+    } catch (error: any) {
+      logger?.error('Error retrieving stores', error);
+      res.status(500).json({ error: error.message });
+    }
   }
-});
+);
 
 // GET /api/stores/:id - Get store by ID
 router.get(
@@ -44,7 +64,7 @@ router.get(
     try {
       const store = await storeUseCase.GetStoreById(id);
       logger?.info('Successfully retrieved store', { id });
-      res.json(store);
+      res.json(formatModelWithUserRelations(store as any));
     } catch (error: any) {
       logger?.error('Error retrieving store', error, { id });
       if (error.message === 'Store not found') {
@@ -65,17 +85,21 @@ router.post(
     body('name').notEmpty().withMessage('Name is required').isString(),
     body('address').optional().isString(),
     body('phone').optional().isString(),
-    body('created_by').optional().isUUID().withMessage('Invalid created_by UUID'),
-    body('updated_by').optional().isUUID().withMessage('Invalid updated_by UUID'),
     handleValidationErrors,
   ],
   async (req: Request, res: Response) => {
     const logger = GetLogger();
     logger?.info('POST /api/stores - Create new store', { body: req.body });
     try {
-      const store = await storeUseCase.CreateStore(req.body);
+      // Set created_by and updated_by from authenticated user
+      const storeData = {
+        ...req.body,
+        created_by: req.user?.userId || null,
+        updated_by: req.user?.userId || null,
+      };
+      const store = await storeUseCase.CreateStore(storeData);
       logger?.info('Successfully created store', { id: store.id, name: store.name });
-      res.status(201).json(store);
+      res.status(201).json(formatModelWithUserRelations(store));
     } catch (error: any) {
       logger?.error('Error creating store', error, { body: req.body });
       res.status(400).json({ error: error.message });
@@ -87,11 +111,11 @@ router.post(
 router.put(
   '/:id',
   [
+    AuthenticateMiddleware,
     param('id').isUUID().withMessage('Invalid store ID format'),
     body('name').optional().isString(),
     body('address').optional().isString(),
     body('phone').optional().isString(),
-    body('updated_by').optional().isUUID().withMessage('Invalid updated_by UUID'),
     handleValidationErrors,
   ],
   async (req: Request, res: Response) => {
@@ -99,9 +123,14 @@ router.put(
     const id = req.params.id as string;
     logger?.info('PUT /api/stores/:id - Update store', { id, body: req.body });
     try {
-      const store = await storeUseCase.UpdateStore(id, req.body);
+      // Set updated_by from authenticated user
+      const updateData = {
+        ...req.body,
+        updated_by: req.user?.userId || null,
+      };
+      const store = await storeUseCase.UpdateStore(id, updateData);
       logger?.info('Successfully updated store', { id });
-      res.json(store);
+      res.json(formatModelWithUserRelations(store));
     } catch (error: any) {
       logger?.error('Error updating store', error, { id });
       if (error.message === 'Store not found') {

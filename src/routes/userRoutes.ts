@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { body, param, validationResult } from 'express-validator';
+import { body, param, query, validationResult } from 'express-validator';
 import { UserUseCase } from '../usecase/UserUseCase';
 import { GetLogger } from '../utils/loggerContext';
 import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
+import { formatModelWithUserRelations, formatModelsWithUserRelations } from '../utils/formatResponse';
 
 const router = Router();
 const userUseCase = new UserUseCase();
@@ -16,19 +17,34 @@ const handleValidationErrors = (req: Request, res: Response, next: any) => {
   next();
 };
 
-// GET /api/users - Get all users
-router.get('/', async (req: Request, res: Response) => {
-  const logger = GetLogger();
-  logger?.info('GET /api/users - Get all users');
-  try {
-    const users = await userUseCase.GetAllUsers();
-    logger?.info('Successfully retrieved all users', { count: users.length });
-    res.json(users);
-  } catch (error: any) {
-    logger?.error('Error retrieving users', error);
-    res.status(500).json({ error: error.message });
+// GET /api/users - Get all users with pagination
+router.get(
+  '/',
+  [
+    query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
+    query('offset').optional().isInt({ min: 0 }).withMessage('Offset must be a non-negative integer'),
+    handleValidationErrors,
+  ],
+  async (req: Request, res: Response) => {
+    const logger = GetLogger();
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 10;
+    const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+    logger?.info('GET /api/users - Get all users with pagination', { limit, offset });
+    try {
+      const { users, total } = await userUseCase.GetAllUsersWithPagination(limit, offset);
+      logger?.info('Successfully retrieved users', { count: users.length, total, limit, offset });
+      res.json({
+        data: formatModelsWithUserRelations(users),
+        total,
+        limit,
+        offset,
+      });
+    } catch (error: any) {
+      logger?.error('Error retrieving users', error);
+      res.status(500).json({ error: error.message });
+    }
   }
-});
+);
 
 // GET /api/users/:id - Get user by ID
 router.get(
@@ -44,7 +60,7 @@ router.get(
     try {
       const user = await userUseCase.GetUserById(id);
       logger?.info('Successfully retrieved user', { id });
-      res.json(user);
+      res.json(formatModelWithUserRelations(user as any));
     } catch (error: any) {
       logger?.error('Error retrieving user', error, { id });
       if (error.message === 'User not found') {
@@ -68,17 +84,21 @@ router.post(
     body('password').notEmpty().withMessage('Password is required').isString().isLength({ min: 6 }),
     body('role_id').optional().isUUID().withMessage('Invalid role_id UUID'),
     body('store_id').optional().isUUID().withMessage('Invalid store_id UUID'),
-    body('created_by').optional().isUUID().withMessage('Invalid created_by UUID'),
-    body('updated_by').optional().isUUID().withMessage('Invalid updated_by UUID'),
     handleValidationErrors,
   ],
   async (req: Request, res: Response) => {
     const logger = GetLogger();
     logger?.info('POST /api/users - Create new user', { body: { ...req.body, password: '[REDACTED]' } });
     try {
-      const user = await userUseCase.CreateUser(req.body);
+      // Set created_by and updated_by from authenticated user
+      const userData = {
+        ...req.body,
+        created_by: req.user?.userId || null,
+        updated_by: req.user?.userId || null,
+      };
+      const user = await userUseCase.CreateUser(userData);
       logger?.info('Successfully created user', { id: user.id, username: user.username });
-      res.status(201).json(user);
+      res.status(201).json(formatModelWithUserRelations(user));
     } catch (error: any) {
       logger?.error('Error creating user', error, { body: { ...req.body, password: '[REDACTED]' } });
       res.status(400).json({ error: error.message });
@@ -90,6 +110,7 @@ router.post(
 router.put(
   '/:id',
   [
+    AuthenticateMiddleware,
     param('id').isUUID().withMessage('Invalid user ID format'),
     body('username').optional().isString().isLength({ min: 3, max: 50 }),
     body('email').optional().isEmail(),
@@ -97,7 +118,6 @@ router.put(
     body('password').optional().isString().isLength({ min: 6 }),
     body('role_id').optional().isUUID().withMessage('Invalid role_id UUID'),
     body('store_id').optional().isUUID().withMessage('Invalid store_id UUID'),
-    body('updated_by').optional().isUUID().withMessage('Invalid updated_by UUID'),
     handleValidationErrors,
   ],
   async (req: Request, res: Response) => {
@@ -105,9 +125,14 @@ router.put(
     const id = req.params.id as string;
     logger?.info('PUT /api/users/:id - Update user', { id, body: { ...req.body, password: req.body.password ? '[REDACTED]' : undefined } });
     try {
-      const user = await userUseCase.UpdateUser(id, req.body);
+      // Set updated_by from authenticated user
+      const updateData = {
+        ...req.body,
+        updated_by: req.user?.userId || null,
+      };
+      const user = await userUseCase.UpdateUser(id, updateData);
       logger?.info('Successfully updated user', { id });
-      res.json(user);
+      res.json(formatModelWithUserRelations(user));
     } catch (error: any) {
       logger?.error('Error updating user', error, { id });
       if (error.message === 'User not found') {

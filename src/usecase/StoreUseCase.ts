@@ -17,6 +17,14 @@ export class StoreUseCase {
     return stores;
   }
 
+  async GetAllStoresWithPagination(limit: number, offset: number, searchName?: string, searchPhone?: string): Promise<{ stores: Store[]; total: number }> {
+    const logger = GetLogger();
+    logger?.debug('StoreUseCase.GetAllStoresWithPagination - Starting', { limit, offset, searchName, searchPhone });
+    const result = await this.storeRepository.FindAllWithPagination(limit, offset, searchName, searchPhone);
+    logger?.debug('StoreUseCase.GetAllStoresWithPagination - Completed', { count: result.stores.length, total: result.total });
+    return result;
+  }
+
   async GetStoreById(id: string): Promise<Store | null> {
     const logger = GetLogger();
     logger?.debug('StoreUseCase.GetStoreById - Starting', { id });

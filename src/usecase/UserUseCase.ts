@@ -18,6 +18,14 @@ export class UserUseCase {
     return users;
   }
 
+  async GetAllUsersWithPagination(limit: number, offset: number): Promise<{ users: User[]; total: number }> {
+    const logger = GetLogger();
+    logger?.debug('UserUseCase.GetAllUsersWithPagination - Starting', { limit, offset });
+    const result = await this.userRepository.FindAllWithPagination(limit, offset);
+    logger?.debug('UserUseCase.GetAllUsersWithPagination - Completed', { count: result.users.length, total: result.total });
+    return result;
+  }
+
   async GetUserById(id: string): Promise<User | null> {
     const logger = GetLogger();
     logger?.debug('UserUseCase.GetUserById - Starting', { id });

@@ -2,6 +2,7 @@ import 'dotenv/config';
 
 import express from 'express';
 import type { Request, Response } from 'express';
+import cors from 'cors';
 import { connectDatabase, closeDatabase } from './database';
 import roleRoutes from './routes/roleRoutes';
 import storeRoutes from './routes/storeRoutes';
@@ -13,7 +14,16 @@ const app = express();
 
 const port = process.env.PORT || 3000;
 
+// CORS Configuration
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+};
+
 // Middleware
+app.use(cors(corsOptions));
 app.use(requestIdMiddleware);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

@@ -9,10 +9,30 @@ export class UserRepository {
       include: [
         { association: 'role' },
         { association: 'store' },
+        { association: 'creator', attributes: ['id', 'name', 'email'] },
+        { association: 'updater', attributes: ['id', 'name', 'email'] },
       ],
     });
     logger?.debug('UserRepository.FindAll - Query completed', { count: users.length });
     return users;
+  }
+
+  async FindAllWithPagination(limit: number, offset: number): Promise<{ users: User[]; total: number }> {
+    const logger = GetLogger();
+    logger?.debug('UserRepository.FindAllWithPagination - Executing query', { limit, offset });
+    const { count, rows } = await User.findAndCountAll({
+      limit,
+      offset,
+      include: [
+        { association: 'role' },
+        { association: 'store' },
+        { association: 'creator', attributes: ['id', 'name', 'email'] },
+        { association: 'updater', attributes: ['id', 'name', 'email'] },
+      ],
+      order: [['created_at', 'DESC']],
+    });
+    logger?.debug('UserRepository.FindAllWithPagination - Query completed', { count, returned: rows.length });
+    return { users: rows, total: count };
   }
 
   async FindById(id: string): Promise<User | null> {
@@ -22,6 +42,8 @@ export class UserRepository {
       include: [
         { association: 'role' },
         { association: 'store' },
+        { association: 'creator', attributes: ['id', 'name', 'email'] },
+        { association: 'updater', attributes: ['id', 'name', 'email'] },
       ],
     });
     logger?.debug('UserRepository.FindById - Query completed', { id, found: !!user });
@@ -60,6 +82,15 @@ export class UserRepository {
     const logger = GetLogger();
     logger?.debug('UserRepository.Create - Executing query', { username: data.username, email: data.email });
     const user = await User.create(data);
+    // Reload with associations
+    await user.reload({
+      include: [
+        { association: 'role' },
+        { association: 'store' },
+        { association: 'creator', attributes: ['id', 'name', 'email'] },
+        { association: 'updater', attributes: ['id', 'name', 'email'] },
+      ],
+    });
     logger?.info('UserRepository.Create - Query completed', { id: user.id });
     return user;
   }
@@ -67,12 +98,25 @@ export class UserRepository {
   async Update(id: string, data: Partial<UserAttributes>): Promise<[number, User[]]> {
     const logger = GetLogger();
     logger?.debug('UserRepository.Update - Executing query', { id });
-    const result = await User.update(data, {
+    const affectedCount = await User.update(data, {
       where: { id },
-      returning: true,
     });
-    logger?.info('UserRepository.Update - Query completed', { id, affectedRows: result[0] });
-    return result;
+    
+    // Fetch the updated user after update (MySQL doesn't support returning)
+    let updatedUser: User | null = null;
+    if (affectedCount[0] > 0) {
+      updatedUser = await User.findByPk(id, {
+        include: [
+          { association: 'role' },
+          { association: 'store' },
+          { association: 'creator', attributes: ['id', 'name', 'email'] },
+          { association: 'updater', attributes: ['id', 'name', 'email'] },
+        ],
+      });
+    }
+    
+    logger?.info('UserRepository.Update - Query completed', { id, affectedRows: affectedCount[0] });
+    return [affectedCount[0], updatedUser ? [updatedUser] : []];
   }
 
   async Delete(id: string): Promise<number> {
