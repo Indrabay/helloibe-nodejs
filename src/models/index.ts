@@ -3,6 +3,8 @@ import { Sequelize } from 'sequelize';
 import { InitStore, Store } from './Store';
 import { InitRole, Role } from './Role';
 import { InitUser, User } from './User';
+import { InitCategory, Category } from './Category';
+import { InitProduct, Product } from './Product';
 
 // Initialize Sequelize connection
 const sequelize = new Sequelize(
@@ -21,6 +23,8 @@ const sequelize = new Sequelize(
 const StoreModel = InitStore(sequelize);
 const RoleModel = InitRole(sequelize);
 const UserModel = InitUser(sequelize);
+const CategoryModel = InitCategory(sequelize);
+const ProductModel = InitProduct(sequelize);
 
 // Define associations
 // User belongs to Role
@@ -105,11 +109,57 @@ UserModel.hasMany(UserModel, {
   as: 'updatedUsers',
 });
 
+// Category associations
+CategoryModel.belongsTo(UserModel, {
+  foreignKey: 'created_by',
+  as: 'creator',
+});
+CategoryModel.belongsTo(UserModel, {
+  foreignKey: 'updated_by',
+  as: 'updater',
+});
+CategoryModel.hasMany(ProductModel, {
+  foreignKey: 'category_id',
+  as: 'products',
+});
+UserModel.hasMany(CategoryModel, {
+  foreignKey: 'created_by',
+  as: 'createdCategories',
+});
+UserModel.hasMany(CategoryModel, {
+  foreignKey: 'updated_by',
+  as: 'updatedCategories',
+});
+
+// Product associations
+ProductModel.belongsTo(CategoryModel, {
+  foreignKey: 'category_id',
+  as: 'category',
+});
+ProductModel.belongsTo(UserModel, {
+  foreignKey: 'created_by',
+  as: 'creator',
+});
+ProductModel.belongsTo(UserModel, {
+  foreignKey: 'updated_by',
+  as: 'updater',
+});
+UserModel.hasMany(ProductModel, {
+  foreignKey: 'created_by',
+  as: 'createdProducts',
+});
+UserModel.hasMany(ProductModel, {
+  foreignKey: 'updated_by',
+  as: 'updatedProducts',
+});
+
 export {
   sequelize,
   Store,
   Role,
   User,
+  Category,
+  Product,
 };
 
 export default sequelize;

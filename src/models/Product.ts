@@ -1,34 +1,36 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import { Sequelize } from 'sequelize';
 
-export interface StoreAttributes {
+export interface ProductAttributes {
   id: string;
   name: string;
-  address?: string | null;
-  phone?: string | null;
-  store_code?: string | null;
+  category_id: number;
+  sku: string;
+  selling_price: number;
+  purchase_price: number;
   created_at: Date;
   updated_at: Date;
   created_by?: string | null;
   updated_by?: string | null;
 }
 
-export interface StoreCreationAttributes extends Optional<StoreAttributes, 'id' | 'created_at' | 'updated_at' | 'address' | 'phone' | 'store_code' | 'created_by' | 'updated_by'> {}
+export interface ProductCreationAttributes extends Optional<ProductAttributes, 'id' | 'sku' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'> {}
 
-export class Store extends Model<StoreAttributes, StoreCreationAttributes> implements StoreAttributes {
+export class Product extends Model<ProductAttributes, ProductCreationAttributes> implements ProductAttributes {
   public id!: string;
   public name!: string;
-  public address!: string | null;
-  public phone!: string | null;
-  public store_code!: string | null;
+  public category_id!: number;
+  public sku!: string;
+  public selling_price!: number;
+  public purchase_price!: number;
   public created_at!: Date;
   public updated_at!: Date;
   public created_by!: string | null;
   public updated_by!: string | null;
 }
 
-export const InitStore = (sequelize: Sequelize): typeof Store => {
-  Store.init(
+export const InitProduct = (sequelize: Sequelize): typeof Product => {
+  Product.init(
     {
       id: {
         type: DataTypes.UUID,
@@ -40,18 +42,26 @@ export const InitStore = (sequelize: Sequelize): typeof Store => {
         type: DataTypes.STRING,
         allowNull: false,
       },
-      address: {
-        type: DataTypes.STRING,
-        allowNull: true,
+      category_id: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        references: {
+          model: 'categories',
+          key: 'id',
+        },
       },
-      phone: {
-        type: DataTypes.STRING,
-        allowNull: true,
-      },
-      store_code: {
-        type: DataTypes.STRING(20),
-        allowNull: true,
+      sku: {
+        type: DataTypes.STRING(50),
+        allowNull: false,
         unique: true,
+      },
+      selling_price: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+      },
+      purchase_price: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
       },
       created_at: {
         type: DataTypes.DATE,
@@ -82,7 +92,7 @@ export const InitStore = (sequelize: Sequelize): typeof Store => {
     },
     {
       sequelize,
-      tableName: 'stores',
+      tableName: 'products',
       timestamps: true,
       createdAt: 'created_at',
       updatedAt: 'updated_at',
@@ -90,6 +100,6 @@ export const InitStore = (sequelize: Sequelize): typeof Store => {
     }
   );
 
-  return Store;
+  return Product;
 };
 

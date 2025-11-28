@@ -8,6 +8,8 @@ import roleRoutes from './routes/roleRoutes';
 import storeRoutes from './routes/storeRoutes';
 import userRoutes from './routes/userRoutes';
 import authRoutes from './routes/authRoutes';
+import categoryRoutes from './routes/categoryRoutes';
+import productRoutes from './routes/productRoutes';
 import { requestIdMiddleware } from './middleware/requestId';
 
 const app = express();
@@ -38,6 +40,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/stores', storeRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/products', productRoutes);
 
 async function startServer() {
   try {

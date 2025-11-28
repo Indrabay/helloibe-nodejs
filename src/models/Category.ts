@@ -1,38 +1,34 @@
 import { DataTypes, Model, Optional } from 'sequelize';
 import { Sequelize } from 'sequelize';
 
-export interface StoreAttributes {
-  id: string;
+export interface CategoryAttributes {
+  id: number;
   name: string;
-  address?: string | null;
-  phone?: string | null;
-  store_code?: string | null;
+  category_code: string;
   created_at: Date;
   updated_at: Date;
   created_by?: string | null;
   updated_by?: string | null;
 }
 
-export interface StoreCreationAttributes extends Optional<StoreAttributes, 'id' | 'created_at' | 'updated_at' | 'address' | 'phone' | 'store_code' | 'created_by' | 'updated_by'> {}
+export interface CategoryCreationAttributes extends Optional<CategoryAttributes, 'id' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'> {}
 
-export class Store extends Model<StoreAttributes, StoreCreationAttributes> implements StoreAttributes {
-  public id!: string;
+export class Category extends Model<CategoryAttributes, CategoryCreationAttributes> implements CategoryAttributes {
+  public id!: number;
   public name!: string;
-  public address!: string | null;
-  public phone!: string | null;
-  public store_code!: string | null;
+  public category_code!: string;
   public created_at!: Date;
   public updated_at!: Date;
   public created_by!: string | null;
   public updated_by!: string | null;
 }
 
-export const InitStore = (sequelize: Sequelize): typeof Store => {
-  Store.init(
+export const InitCategory = (sequelize: Sequelize): typeof Category => {
+  Category.init(
     {
       id: {
-        type: DataTypes.UUID,
-        defaultValue: DataTypes.UUIDV4,
+        type: DataTypes.INTEGER,
+        autoIncrement: true,
         primaryKey: true,
         allowNull: false,
       },
@@ -40,17 +36,9 @@ export const InitStore = (sequelize: Sequelize): typeof Store => {
         type: DataTypes.STRING,
         allowNull: false,
       },
-      address: {
-        type: DataTypes.STRING,
-        allowNull: true,
-      },
-      phone: {
-        type: DataTypes.STRING,
-        allowNull: true,
-      },
-      store_code: {
+      category_code: {
         type: DataTypes.STRING(20),
-        allowNull: true,
+        allowNull: false,
         unique: true,
       },
       created_at: {
@@ -82,7 +70,7 @@ export const InitStore = (sequelize: Sequelize): typeof Store => {
     },
     {
       sequelize,
-      tableName: 'stores',
+      tableName: 'categories',
       timestamps: true,
       createdAt: 'created_at',
       updatedAt: 'updated_at',
@@ -90,6 +78,6 @@ export const InitStore = (sequelize: Sequelize): typeof Store => {
     }
   );
 
-  return Store;
+  return Category;
 };
 

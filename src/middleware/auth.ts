@@ -31,7 +31,7 @@ export async function AuthenticateMiddleware(req: Request, res: Response, next: 
 
       // Fetch user and role to get current level
       const user = await User.findByPk(decoded.userId, {
-        include: [{ association: 'role' }],
+        include: [{ association: 'role' }, { association: 'store' }],
       });
 
       if (!user) {
