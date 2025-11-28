@@ -13,6 +13,15 @@ export interface ProductRow {
   purchase_price: number;
 }
 
+export interface InventoryRow {
+  product_id?: string;
+  sku?: string;
+  quantity: number;
+  location?: string;
+  expiry_date?: string;
+  store_id?: string;
+}
+
 export async function parseCSV(filePath: string): Promise<ProductRow[]> {
   return new Promise((resolve, reject) => {
     const results: ProductRow[] = [];
@@ -61,13 +70,61 @@ export async function parseXLSX(filePath: string): Promise<ProductRow[]> {
   }));
 }
 
-export async function parseBuffer(buffer: Buffer, mimetype: string): Promise<ProductRow[]> {
+export async function parseCSVInventory(filePath: string): Promise<InventoryRow[]> {
+  return new Promise((resolve, reject) => {
+    const results: InventoryRow[] = [];
+    fs.createReadStream(filePath)
+      .pipe(csv())
+      .on('data', (data: any) => {
+        results.push({
+          product_id: data.product_id || data.productId || data['Product ID'] || undefined,
+          sku: data.sku || data.SKU || undefined,
+          quantity: parseFloat(data.quantity || data.Quantity || '0'),
+          location: data.location || data.Location || undefined,
+          expiry_date: data.expiry_date || data.expiryDate || data['Expiry Date'] || undefined,
+          store_id: data.store_id || data.storeId || data['Store ID'] || undefined,
+        });
+      })
+      .on('end', () => {
+        resolve(results);
+      })
+      .on('error', (error: Error) => {
+        reject(error);
+      });
+  });
+}
+
+export async function parseXLSXInventory(filePath: string): Promise<InventoryRow[]> {
+  const workbook = XLSX.readFile(filePath);
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) {
+    throw new Error('No sheet found in Excel file');
+  }
+  const worksheet = workbook.Sheets[sheetName];
+  if (!worksheet) {
+    throw new Error('Worksheet not found');
+  }
+  const data = XLSX.utils.sheet_to_json(worksheet);
+  
+  return (data as any[]).map((row: any) => ({
+    product_id: row.product_id || row.productId || row['Product ID'] || undefined,
+    sku: row.sku || row.SKU || undefined,
+    quantity: parseFloat(row.quantity || row.Quantity || '0'),
+    location: row.location || row.Location || undefined,
+    expiry_date: row.expiry_date || row.expiryDate || row['Expiry Date'] || undefined,
+    store_id: row.store_id || row.storeId || row['Store ID'] || undefined,
+  }));
+}
+
+export async function parseBuffer(buffer: Buffer, mimetype: string, type: 'product' | 'inventory' = 'product'): Promise<ProductRow[] | InventoryRow[]> {
   if (mimetype === 'text/csv' || mimetype === 'application/csv') {
     // Create a temporary file for CSV parsing
     const tempPath = `/tmp/${Date.now()}.csv`;
     fs.writeFileSync(tempPath, buffer);
     try {
-      const result = await parseCSV(tempPath);
+      const result = type === 'inventory' 
+        ? await parseCSVInventory(tempPath)
+        : await parseCSV(tempPath);
       fs.unlinkSync(tempPath);
       return result;
     } catch (error) {
@@ -82,7 +139,9 @@ export async function parseBuffer(buffer: Buffer, mimetype: string): Promise<Pro
     const tempPath = `/tmp/${Date.now()}.xlsx`;
     fs.writeFileSync(tempPath, buffer);
     try {
-      const result = await parseXLSX(tempPath);
+      const result = type === 'inventory'
+        ? await parseXLSXInventory(tempPath)
+        : await parseXLSX(tempPath);
       fs.unlinkSync(tempPath);
       return result;
     } catch (error) {

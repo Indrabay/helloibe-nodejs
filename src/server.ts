@@ -10,6 +10,8 @@ import userRoutes from './routes/userRoutes';
 import authRoutes from './routes/authRoutes';
 import categoryRoutes from './routes/categoryRoutes';
 import productRoutes from './routes/productRoutes';
+import inventoryRoutes from './routes/inventoryRoutes';
+import orderRoutes from './routes/orderRoutes';
 import { requestIdMiddleware } from './middleware/requestId';
 
 const app = express();
@@ -42,6 +44,8 @@ app.use('/api/stores', storeRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/inventories', inventoryRoutes);
+app.use('/api/orders', orderRoutes);
 
 async function startServer() {
   try {

@@ -5,6 +5,9 @@ import { InitRole, Role } from './Role';
 import { InitUser, User } from './User';
 import { InitCategory, Category } from './Category';
 import { InitProduct, Product } from './Product';
+import { InitInventory, Inventory } from './Inventory';
+import { InitOrder, Order } from './Order';
+import { InitOrderItem, OrderItem } from './OrderItem';
 
 // Initialize Sequelize connection
 const sequelize = new Sequelize(
@@ -25,6 +28,9 @@ const RoleModel = InitRole(sequelize);
 const UserModel = InitUser(sequelize);
 const CategoryModel = InitCategory(sequelize);
 const ProductModel = InitProduct(sequelize);
+const InventoryModel = InitInventory(sequelize);
+const OrderModel = InitOrder(sequelize);
+const OrderItemModel = InitOrderItem(sequelize);
 
 // Define associations
 // User belongs to Role
@@ -49,6 +55,11 @@ RoleModel.hasMany(UserModel, {
 StoreModel.hasMany(UserModel, {
   foreignKey: 'store_id',
   as: 'users',
+});
+// Store has many Products
+StoreModel.hasMany(ProductModel, {
+  foreignKey: 'store_id',
+  as: 'products',
 });
 
 // Store created_by and updated_by associations with User
@@ -136,6 +147,10 @@ ProductModel.belongsTo(CategoryModel, {
   foreignKey: 'category_id',
   as: 'category',
 });
+ProductModel.belongsTo(StoreModel, {
+  foreignKey: 'store_id',
+  as: 'store',
+});
 ProductModel.belongsTo(UserModel, {
   foreignKey: 'created_by',
   as: 'creator',
@@ -153,6 +168,60 @@ UserModel.hasMany(ProductModel, {
   as: 'updatedProducts',
 });
 
+// Inventory associations
+InventoryModel.belongsTo(ProductModel, {
+  foreignKey: 'product_id',
+  as: 'product',
+});
+InventoryModel.belongsTo(UserModel, {
+  foreignKey: 'created_by',
+  as: 'creator',
+});
+ProductModel.hasMany(InventoryModel, {
+  foreignKey: 'product_id',
+  as: 'inventory',
+});
+UserModel.hasMany(InventoryModel, {
+  foreignKey: 'created_by',
+  as: 'createdInventory',
+});
+
+// Order associations
+OrderModel.belongsTo(UserModel, {
+  foreignKey: 'created_by',
+  as: 'creator',
+});
+OrderModel.belongsTo(StoreModel, {
+  foreignKey: 'store_id',
+  as: 'store',
+});
+OrderModel.hasMany(OrderItemModel, {
+  foreignKey: 'order_id',
+  as: 'orderItems',
+});
+UserModel.hasMany(OrderModel, {
+  foreignKey: 'created_by',
+  as: 'createdOrders',
+});
+StoreModel.hasMany(OrderModel, {
+  foreignKey: 'store_id',
+  as: 'orders',
+});
+
+// OrderItem associations
+OrderItemModel.belongsTo(OrderModel, {
+  foreignKey: 'order_id',
+  as: 'order',
+});
+OrderItemModel.belongsTo(ProductModel, {
+  foreignKey: 'product_id',
+  as: 'product',
+});
+ProductModel.hasMany(OrderItemModel, {
+  foreignKey: 'product_id',
+  as: 'orderItems',
+});
+
 export {
   sequelize,
   Store,
@@ -160,6 +229,9 @@ export {
   User,
   Category,
   Product,
+  Inventory,
+  Order,
+  OrderItem,
 };
 
 export default sequelize;

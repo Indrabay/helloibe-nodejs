@@ -156,7 +156,7 @@ router.post(
       }
 
       // Parse file
-      const rows = await parseBuffer(req.file.buffer, req.file.mimetype);
+      const rows = await parseBuffer(req.file.buffer, req.file.mimetype, 'product') as ProductRow[];
       
       if (rows.length === 0) {
         return res.status(400).json({ error: 'No data found in file' });

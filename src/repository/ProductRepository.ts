@@ -8,7 +8,8 @@ export class ProductRepository {
     logger?.debug('ProductRepository.FindAll - Executing query');
     const products = await Product.findAll({
       include: [
-        { association: 'category' },
+        { association: 'category', attributes: ['id', 'name', 'category_code'] },
+        { association: 'store', attributes: ['id', 'name', 'store_code'] },
         { association: 'creator', attributes: ['id', 'name', 'email'] },
         { association: 'updater', attributes: ['id', 'name', 'email'] },
       ],
@@ -43,7 +44,8 @@ export class ProductRepository {
       offset,
       order: [['created_at', 'DESC']],
       include: [
-        { association: 'category' },
+        { association: 'category', attributes: ['id', 'name', 'category_code'] },
+        { association: 'store', attributes: ['id', 'name', 'store_code'] },
         { association: 'creator', attributes: ['id', 'name', 'email'] },
         { association: 'updater', attributes: ['id', 'name', 'email'] },
       ],
@@ -57,7 +59,8 @@ export class ProductRepository {
     logger?.debug('ProductRepository.FindById - Executing query', { id });
     const product = await Product.findByPk(id, {
       include: [
-        { association: 'category' },
+        { association: 'category', attributes: ['id', 'name', 'category_code'] },
+        { association: 'store', attributes: ['id', 'name', 'store_code'] },
         { association: 'creator', attributes: ['id', 'name', 'email'] },
         { association: 'updater', attributes: ['id', 'name', 'email'] },
       ],
@@ -72,7 +75,8 @@ export class ProductRepository {
     const product = await Product.findOne({
       where: { sku },
       include: [
-        { association: 'category' },
+        { association: 'category', attributes: ['id', 'name', 'category_code'] },
+        { association: 'store', attributes: ['id', 'name', 'store_code'] },
         { association: 'creator', attributes: ['id', 'name', 'email'] },
         { association: 'updater', attributes: ['id', 'name', 'email'] },
       ],
@@ -106,7 +110,8 @@ export class ProductRepository {
     // Reload with associations
     await product.reload({
       include: [
-        { association: 'category' },
+        { association: 'category', attributes: ['id', 'name', 'category_code'] },
+        { association: 'store', attributes: ['id', 'name', 'store_code'] },
         { association: 'creator', attributes: ['id', 'name', 'email'] },
         { association: 'updater', attributes: ['id', 'name', 'email'] },
       ],

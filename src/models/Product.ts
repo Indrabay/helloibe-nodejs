@@ -5,6 +5,7 @@ export interface ProductAttributes {
   id: string;
   name: string;
   category_id: number;
+  store_id?: string | null;
   sku: string;
   selling_price: number;
   purchase_price: number;
@@ -14,12 +15,13 @@ export interface ProductAttributes {
   updated_by?: string | null;
 }
 
-export interface ProductCreationAttributes extends Optional<ProductAttributes, 'id' | 'sku' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by'> {}
+export interface ProductCreationAttributes extends Optional<ProductAttributes, 'id' | 'sku' | 'created_at' | 'updated_at' | 'created_by' | 'updated_by' | 'store_id'> {}
 
 export class Product extends Model<ProductAttributes, ProductCreationAttributes> implements ProductAttributes {
   public id!: string;
   public name!: string;
   public category_id!: number;
+  public store_id!: string | null;
   public sku!: string;
   public selling_price!: number;
   public purchase_price!: number;
@@ -49,6 +51,16 @@ export const InitProduct = (sequelize: Sequelize): typeof Product => {
           model: 'categories',
           key: 'id',
         },
+      },
+      store_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: 'stores',
+          key: 'id',
+        },
+        onUpdate: 'CASCADE',
+        onDelete: 'RESTRICT',
       },
       sku: {
         type: DataTypes.STRING(50),

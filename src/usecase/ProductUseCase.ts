@@ -51,20 +51,7 @@ export class ProductUseCase {
     const logger = GetLogger();
     logger?.debug('ProductUseCase.GetAllProductsWithPagination - Starting', { limit, offset, searchName, searchSku, storeId });
     
-    // If storeId is provided, get store_code
-    let storeCode: string | undefined = undefined;
-    if (storeId) {
-      const store = await this.storeRepository.FindById(storeId);
-      if (!store) {
-        throw new Error('Store not found');
-      }
-      if (!store.store_code) {
-        throw new Error(`Store "${store.name}" does not have a store_code`);
-      }
-      storeCode = store.store_code;
-    }
-    
-    const result = await this.productRepository.FindAllWithPagination(limit, offset, searchName, searchSku, storeCode);
+    const result = await this.productRepository.FindAllWithPagination(limit, offset, searchName, searchSku, storeId);
     logger?.debug('ProductUseCase.GetAllProductsWithPagination - Completed', { count: result.products.length, total: result.total });
     return result;
   }
@@ -168,6 +155,7 @@ export class ProductUseCase {
     
     const productData: ProductCreationAttributes = {
       ...data,
+      store_id: storeId,
       sku,
       created_by: userId,
       updated_by: userId,
@@ -285,6 +273,7 @@ export class ProductUseCase {
       products.push({
         ...data,
         category_id: categoryId,
+        store_id: productStoreId,
         sku,
         created_by: userId,
         updated_by: userId,
@@ -397,6 +386,7 @@ export class ProductUseCase {
         const productData: ProductCreationAttributes = {
           ...data,
           category_id: categoryId,
+          store_id: productStoreId,
           sku,
           created_by: userId,
           updated_by: userId,
@@ -424,6 +414,7 @@ export class ProductUseCase {
           const productData: ProductCreationAttributes = {
             ...data,
             category_id: categoryId,
+            store_id: productStoreId,
             sku,
             created_by: userId,
             updated_by: userId,
