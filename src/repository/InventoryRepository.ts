@@ -1,6 +1,8 @@
 import { Inventory, InventoryAttributes, InventoryCreationAttributes } from '../models/Inventory';
 import { GetLogger } from '../utils/loggerContext';
 import { Op } from 'sequelize';
+import { Sequelize, QueryTypes } from 'sequelize';
+import { sequelize } from '../models';
 
 export class InventoryRepository {
   async FindAllWithPagination(limit: number, offset: number, productId?: string, status?: string | string[], productName?: string, sku?: string, categoryId?: number, search?: string): Promise<{ inventory: Inventory[]; total: number }> {
@@ -158,6 +160,108 @@ export class InventoryRepository {
     })));
     logger?.info('InventoryRepository.CreateBatch - Batch create completed', { count: inventory.length });
     return reloadedInventory;
+  }
+
+  async GetTotalInventoryQuantity(productId: string): Promise<number> {
+    const logger = GetLogger();
+    logger?.debug('InventoryRepository.GetTotalInventoryQuantity - Executing query', { productId });
+    
+    const result = await sequelize.query(
+      `SELECT COALESCE(SUM(quantity), 0) as total_quantity 
+       FROM inventories 
+       WHERE product_id = :productId 
+       AND status IN ('active', 'near_expiry')`,
+      {
+        replacements: { productId },
+        type: QueryTypes.SELECT,
+      }
+    ) as any[];
+    
+    const totalQuantity = result[0]?.total_quantity || 0;
+    logger?.debug('InventoryRepository.GetTotalInventoryQuantity - Query completed', { productId, totalQuantity });
+    return parseFloat(totalQuantity.toString());
+  }
+
+  async FindByProductIdOrderedByExpiry(productId: string): Promise<Inventory[]> {
+    const logger = GetLogger();
+    logger?.debug('InventoryRepository.FindByProductIdOrderedByExpiry - Executing query', { productId });
+    
+    const inventories = await Inventory.findAll({
+      where: {
+        product_id: productId,
+        status: {
+          [Op.in]: ['active', 'near_expiry'],
+        },
+      },
+      order: [
+        ['expiry_date', 'ASC NULLS LAST'], // Order by expiry_date ascending (FIFO), nulls last
+        ['created_at', 'ASC'], // Secondary sort by created_at
+      ],
+    });
+    
+    logger?.debug('InventoryRepository.FindByProductIdOrderedByExpiry - Query completed', { productId, count: inventories.length });
+    return inventories;
+  }
+
+  async ReduceInventoryQuantity(productId: string, quantityToReduce: number): Promise<void> {
+    const logger = GetLogger();
+    logger?.debug('InventoryRepository.ReduceInventoryQuantity - Starting', { productId, quantityToReduce });
+    
+    // Get available inventory items ordered by expiry (FIFO)
+    const inventories = await this.FindByProductIdOrderedByExpiry(productId);
+    
+    if (inventories.length === 0) {
+      logger?.error('InventoryRepository.ReduceInventoryQuantity - No inventory found', { productId });
+      throw new Error(`No inventory found for product ${productId}`);
+    }
+    
+    let remainingQuantity = quantityToReduce;
+    
+    for (const inventory of inventories) {
+      if (remainingQuantity <= 0) {
+        break;
+      }
+      
+      const currentQuantity = parseFloat(inventory.quantity.toString());
+      
+      if (currentQuantity <= remainingQuantity) {
+        // This inventory item will be fully consumed
+        await Inventory.destroy({
+          where: { id: inventory.id },
+        });
+        remainingQuantity -= currentQuantity;
+        logger?.debug('InventoryRepository.ReduceInventoryQuantity - Deleted inventory item', { 
+          inventoryId: inventory.id, 
+          quantity: currentQuantity 
+        });
+      } else {
+        // Partially reduce this inventory item
+        const newQuantity = currentQuantity - remainingQuantity;
+        await Inventory.update(
+          { quantity: newQuantity },
+          { where: { id: inventory.id } }
+        );
+        logger?.debug('InventoryRepository.ReduceInventoryQuantity - Updated inventory item', { 
+          inventoryId: inventory.id, 
+          oldQuantity: currentQuantity,
+          newQuantity,
+          reduced: remainingQuantity
+        });
+        remainingQuantity = 0;
+      }
+    }
+    
+    if (remainingQuantity > 0) {
+      logger?.error('InventoryRepository.ReduceInventoryQuantity - Insufficient inventory', { 
+        productId, 
+        requested: quantityToReduce,
+        available: quantityToReduce - remainingQuantity,
+        missing: remainingQuantity
+      });
+      throw new Error(`Insufficient inventory. Requested: ${quantityToReduce}, Available: ${quantityToReduce - remainingQuantity}, Missing: ${remainingQuantity}`);
+    }
+    
+    logger?.info('InventoryRepository.ReduceInventoryQuantity - Completed', { productId, quantityReduced: quantityToReduce });
   }
 }
 

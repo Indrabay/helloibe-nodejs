@@ -91,24 +91,5 @@ export class OrderRepository {
     }
   }
 
-  async GetTotalInventoryQuantity(productId: string): Promise<number> {
-    const logger = GetLogger();
-    logger?.debug('OrderRepository.GetTotalInventoryQuantity - Executing query', { productId });
-    
-    const result = await sequelize.query(
-      `SELECT COALESCE(SUM(quantity), 0) as total_quantity 
-       FROM inventories 
-       WHERE product_id = :productId 
-       AND status IN ('active', 'near_expiry')`,
-      {
-        replacements: { productId },
-        type: QueryTypes.SELECT,
-      }
-    ) as any[];
-    
-    const totalQuantity = result[0]?.total_quantity || 0;
-    logger?.debug('OrderRepository.GetTotalInventoryQuantity - Query completed', { productId, totalQuantity });
-    return parseFloat(totalQuantity.toString());
-  }
 }
 

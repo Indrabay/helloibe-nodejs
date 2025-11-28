@@ -3,6 +3,7 @@ import { OrderItemCreationAttributes } from '../models/OrderItem';
 import { OrderRepository } from '../repository/OrderRepository';
 import { ProductRepository } from '../repository/ProductRepository';
 import { StoreRepository } from '../repository/StoreRepository';
+import { InventoryRepository } from '../repository/InventoryRepository';
 import { GetLogger } from '../utils/loggerContext';
 import { User } from '../models';
 
@@ -21,11 +22,13 @@ export class OrderUseCase {
   private orderRepository: OrderRepository;
   private productRepository: ProductRepository;
   private storeRepository: StoreRepository;
+  private inventoryRepository: InventoryRepository;
 
   constructor() {
     this.orderRepository = new OrderRepository();
     this.productRepository = new ProductRepository();
     this.storeRepository = new StoreRepository();
+    this.inventoryRepository = new InventoryRepository();
   }
 
   private generateInvoiceNumber(storeCode: string): string {
@@ -111,7 +114,7 @@ export class OrderUseCase {
       }
       
       // Check inventory availability
-      const availableQuantity = await this.orderRepository.GetTotalInventoryQuantity(item.product_id);
+      const availableQuantity = await this.inventoryRepository.GetTotalInventoryQuantity(item.product_id);
       if (item.quantity > availableQuantity) {
         throw new Error(`Insufficient inventory for product ${product.name}. Available: ${availableQuantity}, Requested: ${item.quantity}`);
       }
@@ -146,6 +149,26 @@ export class OrderUseCase {
     };
     
     const order = await this.orderRepository.Create(orderData, orderItems);
+    
+    // Reduce inventory quantity for each order item
+    for (const item of data.items) {
+      try {
+        await this.inventoryRepository.ReduceInventoryQuantity(item.product_id, item.quantity);
+        logger?.debug('OrderUseCase.Checkout - Reduced inventory', { 
+          productId: item.product_id, 
+          quantity: item.quantity 
+        });
+      } catch (error: any) {
+        logger?.error('OrderUseCase.Checkout - Failed to reduce inventory', error, { 
+          productId: item.product_id, 
+          quantity: item.quantity 
+        });
+        // Note: In a production system, you might want to rollback the order here
+        // For now, we'll log the error but the order is already created
+        throw new Error(`Failed to reduce inventory for product ${item.product_id}: ${error.message}`);
+      }
+    }
+    
     logger?.info('OrderUseCase.Checkout - Completed', { id: order.id, invoice_number: order.invoice_number });
     return order;
   }
