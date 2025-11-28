@@ -227,12 +227,16 @@ router.post(
         })
       );
 
-      const products = await productUseCase.CreateProductsBatch(productsData, req.user?.userId || '', userLevel);
-      logger?.info('Successfully created products from file', { count: products.length });
-      res.status(201).json({
-        message: `Successfully created ${products.length} products`,
-        count: products.length,
-        data: formatModelsWithUserRelations(products),
+      const result = await productUseCase.UpsertProductsBatch(productsData, req.user?.userId || '', userLevel);
+      logger?.info('Successfully processed products from file', { created: result.created.length, updated: result.updated.length });
+      res.status(200).json({
+        message: `Successfully processed ${result.created.length + result.updated.length} products`,
+        created: result.created.length,
+        updated: result.updated.length,
+        data: {
+          created: formatModelsWithUserRelations(result.created),
+          updated: formatModelsWithUserRelations(result.updated),
+        },
       });
     } catch (error: any) {
       logger?.error('Error creating products from file', error);

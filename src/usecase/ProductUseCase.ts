@@ -296,6 +296,148 @@ export class ProductUseCase {
     return createdProducts;
   }
 
+  async UpsertProductsBatch(productsData: (ProductCreationAttributes & { store_id?: string })[], userId: string, userLevel?: number): Promise<{ created: Product[]; updated: Product[] }> {
+    const logger = GetLogger();
+    logger?.debug('ProductUseCase.UpsertProductsBatch - Starting', { count: productsData.length, userLevel });
+    
+    // Get user's store
+    const user = await User.findByPk(userId, {
+      include: [{ association: 'store' }, { association: 'role' }],
+    });
+    
+    if (!user) {
+      logger?.error('ProductUseCase.UpsertProductsBatch - User not found');
+      throw new Error('User not found');
+    }
+    
+    // Determine default store_id: super admin (level 99) must provide store_id in each product, others use their assigned store
+    const actualUserLevel = userLevel || (user as any).role?.level;
+    let defaultStoreId: string | null = null;
+    
+    if (actualUserLevel === 99) {
+      // Super admin must provide store_id for each product (will be checked in the loop)
+      logger?.debug('ProductUseCase.UpsertProductsBatch - Super admin mode, store_id required per product');
+    } else {
+      // Regular user uses their assigned store
+      if (!user.store_id) {
+        logger?.error('ProductUseCase.UpsertProductsBatch - User must have a store assigned');
+        throw new Error('User must have a store assigned');
+      }
+      defaultStoreId = user.store_id;
+    }
+    
+    // Get default store for validation (if not super admin)
+    let defaultStore = null;
+    if (defaultStoreId) {
+      defaultStore = await this.storeRepository.FindById(defaultStoreId);
+      if (!defaultStore || !defaultStore.store_code) {
+        logger?.error('ProductUseCase.UpsertProductsBatch - Store code is required');
+        throw new Error('Store code is required');
+      }
+    }
+    
+    const createdProducts: Product[] = [];
+    const updatedProducts: Product[] = [];
+    
+    for (const data of productsData) {
+      if (!data.name) {
+        throw new Error('Product name is required');
+      }
+      if (!data.category_id) {
+        throw new Error('Category ID is required');
+      }
+      if (!data.selling_price) {
+        throw new Error('Selling price is required');
+      }
+      if (!data.purchase_price) {
+        throw new Error('Purchase price is required');
+      }
+      
+      // Get category - category_id should already be a number from the route handler
+      const categoryId = typeof data.category_id === 'string' ? parseInt(data.category_id, 10) : data.category_id;
+      if (!categoryId || isNaN(categoryId)) {
+        throw new Error(`Invalid category ID for product: ${data.name}`);
+      }
+      
+      // Determine store_id for this product
+      let productStoreId: string | null = null;
+      if (actualUserLevel === 99) {
+        // Super admin must provide store_id
+        if (!data.store_id) {
+          throw new Error(`Store ID is required for product: ${data.name}`);
+        }
+        productStoreId = data.store_id;
+      } else {
+        // Regular user uses their assigned store
+        productStoreId = defaultStoreId;
+      }
+      
+      // Get store for this product
+      const productStore = actualUserLevel === 99 
+        ? await this.storeRepository.FindById(productStoreId!)
+        : defaultStore;
+      
+      if (!productStore) {
+        throw new Error(`Store not found for product: ${data.name}`);
+      }
+      if (!productStore.store_code) {
+        throw new Error(`Store "${productStore.name}" does not have a store_code. Please set store_code for this store.`);
+      }
+      
+      const category = await this.categoryRepository.FindById(categoryId);
+      if (!category) {
+        throw new Error(`Category not found for product: ${data.name}`);
+      }
+      
+      // Check if SKU is provided
+      let sku = data.sku;
+      if (!sku) {
+        // If no SKU provided, generate one and create new product
+        sku = await this.generateSku(productStore.store_code, category.category_code);
+        const productData: ProductCreationAttributes = {
+          ...data,
+          category_id: categoryId,
+          sku,
+          created_by: userId,
+          updated_by: userId,
+        };
+        const product = await this.productRepository.Create(productData);
+        createdProducts.push(product);
+      } else {
+        // SKU is provided, check if product exists
+        const existingProduct = await this.productRepository.FindBySku(sku);
+        if (existingProduct) {
+          // Update existing product
+          const updateData: Partial<ProductAttributes> = {
+            name: data.name,
+            category_id: categoryId,
+            selling_price: data.selling_price,
+            purchase_price: data.purchase_price,
+            updated_by: userId,
+          };
+          const [affectedCount, updatedProductsArray] = await this.productRepository.Update(existingProduct.id, updateData);
+          if (affectedCount > 0 && updatedProductsArray[0]) {
+            updatedProducts.push(updatedProductsArray[0]);
+          }
+        } else {
+          // Create new product with provided SKU
+          const productData: ProductCreationAttributes = {
+            ...data,
+            category_id: categoryId,
+            sku,
+            created_by: userId,
+            updated_by: userId,
+          };
+          const product = await this.productRepository.Create(productData);
+          createdProducts.push(product);
+        }
+      }
+    }
+    
+    logger?.info('ProductUseCase.UpsertProductsBatch - Completed', { created: createdProducts.length, updated: updatedProducts.length });
+    return { created: createdProducts, updated: updatedProducts };
+  }
+
   async UpdateProduct(id: string, data: Partial<ProductAttributes>, userId: string): Promise<Product> {
     const logger = GetLogger();
     logger?.debug('ProductUseCase.UpdateProduct - Starting', { id });
