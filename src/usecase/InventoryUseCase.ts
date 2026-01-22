@@ -134,8 +134,15 @@ export class InventoryUseCase {
       }
     }
     
+    // Purchase price is required in inventory data (no longer in product)
+    if (data.purchase_price === undefined || data.purchase_price === null) {
+      logger?.error('InventoryUseCase.CreateInventory - Purchase price is required');
+      throw new Error('Purchase price is required');
+    }
+    
     const inventoryData: InventoryCreationAttributes = {
       ...data,
+      purchase_price: data.purchase_price,
       status,
       created_by: userId,
     };
@@ -248,8 +255,14 @@ export class InventoryUseCase {
         }
       }
       
+      // Purchase price is required in inventory data (no longer in product)
+      if (data.purchase_price === undefined || data.purchase_price === null) {
+        throw new Error(`Purchase price is required for inventory item: ${product.sku || product.name || data.product_id}`);
+      }
+      
       inventoryToCreate.push({
         ...data,
+        purchase_price: data.purchase_price,
         status,
         created_by: userId,
       });
@@ -258,6 +271,103 @@ export class InventoryUseCase {
     const inventory = await this.inventoryRepository.CreateBatch(inventoryToCreate);
     logger?.info('InventoryUseCase.CreateInventoryBatch - Completed', { count: inventory.length });
     return inventory;
+  }
+
+  /**
+   * Update inventory status based on expiry dates
+   * Processes inventory in batches and updates status: expired, near_expiry, or active
+   * This method is designed to be run in the background (fire-and-forget)
+   */
+  async UpdateInventoryStatusBatch(batchSize: number = 100, nearExpiryDays: number = 7): Promise<{ processed: number; updated: number }> {
+    const logger = GetLogger();
+    logger?.info('InventoryUseCase.UpdateInventoryStatusBatch - Starting', { batchSize, nearExpiryDays });
+    
+    let totalProcessed = 0;
+    let totalUpdated = 0;
+    let offset = 0;
+    let hasMore = true;
+    const now = new Date();
+    
+    while (hasMore) {
+      // Get batch of inventory items
+      const { inventories, hasMore: hasMoreItems } = await this.inventoryRepository.FindAllInBatches(batchSize, offset);
+      
+      if (inventories.length === 0) {
+        hasMore = false;
+        break;
+      }
+      
+      const expiredIds: string[] = [];
+      const nearExpiryIds: string[] = [];
+      const activeIds: string[] = [];
+      
+      // Categorize inventory items by status
+      for (const inventory of inventories) {
+        if (!inventory.expiry_date) {
+          // No expiry date, keep as active
+          if (inventory.status !== 'active') {
+            activeIds.push(inventory.id);
+          }
+          continue;
+        }
+        
+        const expiryDate = new Date(inventory.expiry_date);
+        const daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (daysUntilExpiry < 0) {
+          // Expired
+          if (inventory.status !== 'expired') {
+            expiredIds.push(inventory.id);
+          }
+        } else if (daysUntilExpiry <= nearExpiryDays) {
+          // Near expiry
+          if (inventory.status !== 'near_expiry') {
+            nearExpiryIds.push(inventory.id);
+          }
+        } else {
+          // Active
+          if (inventory.status !== 'active') {
+            activeIds.push(inventory.id);
+          }
+        }
+      }
+      
+      // Update statuses in bulk
+      if (expiredIds.length > 0) {
+        const updated = await this.inventoryRepository.UpdateStatusBatch(expiredIds, 'expired');
+        totalUpdated += updated;
+        logger?.debug('InventoryUseCase.UpdateInventoryStatusBatch - Updated expired', { count: expiredIds.length, updated });
+      }
+      
+      if (nearExpiryIds.length > 0) {
+        const updated = await this.inventoryRepository.UpdateStatusBatch(nearExpiryIds, 'near_expiry');
+        totalUpdated += updated;
+        logger?.debug('InventoryUseCase.UpdateInventoryStatusBatch - Updated near_expiry', { count: nearExpiryIds.length, updated });
+      }
+      
+      if (activeIds.length > 0) {
+        const updated = await this.inventoryRepository.UpdateStatusBatch(activeIds, 'active');
+        totalUpdated += updated;
+        logger?.debug('InventoryUseCase.UpdateInventoryStatusBatch - Updated active', { count: activeIds.length, updated });
+      }
+      
+      totalProcessed += inventories.length;
+      offset += batchSize;
+      hasMore = hasMoreItems;
+      
+      logger?.debug('InventoryUseCase.UpdateInventoryStatusBatch - Batch processed', { 
+        batchNumber: Math.floor(offset / batchSize),
+        processed: totalProcessed,
+        updated: totalUpdated
+      });
+    }
+    
+    logger?.info('InventoryUseCase.UpdateInventoryStatusBatch - Completed', { 
+      totalProcessed, 
+      totalUpdated 
+    });
+    
+    return { processed: totalProcessed, updated: totalUpdated };
   }
 }
 

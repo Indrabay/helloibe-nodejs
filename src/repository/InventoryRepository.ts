@@ -203,7 +203,7 @@ export class InventoryRepository {
     return inventories;
   }
 
-  async ReduceInventoryQuantity(productId: string, quantityToReduce: number): Promise<void> {
+  async ReduceInventoryQuantity(productId: string, quantityToReduce: number): Promise<Array<{ inventoryId: string; quantity: number; purchasePrice: number }>> {
     const logger = GetLogger();
     logger?.debug('InventoryRepository.ReduceInventoryQuantity - Starting', { productId, quantityToReduce });
     
@@ -216,6 +216,7 @@ export class InventoryRepository {
     }
     
     let remainingQuantity = quantityToReduce;
+    const usedInventory: Array<{ inventoryId: string; quantity: number; purchasePrice: number }> = [];
     
     for (const inventory of inventories) {
       if (remainingQuantity <= 0) {
@@ -223,9 +224,15 @@ export class InventoryRepository {
       }
       
       const currentQuantity = parseFloat(inventory.quantity.toString());
+      const purchasePrice = parseFloat(inventory.purchase_price.toString());
       
       if (currentQuantity <= remainingQuantity) {
         // This inventory item will be fully consumed
+        usedInventory.push({
+          inventoryId: inventory.id,
+          quantity: currentQuantity,
+          purchasePrice: purchasePrice,
+        });
         await Inventory.destroy({
           where: { id: inventory.id },
         });
@@ -237,6 +244,11 @@ export class InventoryRepository {
       } else {
         // Partially reduce this inventory item
         const newQuantity = currentQuantity - remainingQuantity;
+        usedInventory.push({
+          inventoryId: inventory.id,
+          quantity: remainingQuantity,
+          purchasePrice: purchasePrice,
+        });
         await Inventory.update(
           { quantity: newQuantity },
           { where: { id: inventory.id } }
@@ -261,7 +273,63 @@ export class InventoryRepository {
       throw new Error(`Insufficient inventory. Requested: ${quantityToReduce}, Available: ${quantityToReduce - remainingQuantity}, Missing: ${remainingQuantity}`);
     }
     
-    logger?.info('InventoryRepository.ReduceInventoryQuantity - Completed', { productId, quantityReduced: quantityToReduce });
+    logger?.info('InventoryRepository.ReduceInventoryQuantity - Completed', { productId, quantityReduced: quantityToReduce, usedInventoryCount: usedInventory.length });
+    return usedInventory;
+  }
+
+  /**
+   * Get inventory items in batches for processing
+   */
+  async FindAllInBatches(batchSize: number, offset: number = 0): Promise<{ inventories: Inventory[]; hasMore: boolean }> {
+    const logger = GetLogger();
+    logger?.debug('InventoryRepository.FindAllInBatches - Executing query', { batchSize, offset });
+    
+    const inventories = await Inventory.findAll({
+      limit: batchSize + 1, // Get one extra to check if there are more
+      offset,
+      order: [['created_at', 'ASC']],
+      include: [
+        { association: 'product', attributes: ['id', 'name', 'sku'] },
+      ],
+    });
+    
+    const hasMore = inventories.length > batchSize;
+    const result = hasMore ? inventories.slice(0, batchSize) : inventories;
+    
+    logger?.debug('InventoryRepository.FindAllInBatches - Query completed', { 
+      batchSize, 
+      offset, 
+      returned: result.length, 
+      hasMore 
+    });
+    
+    return { inventories: result, hasMore };
+  }
+
+  /**
+   * Update inventory status in bulk
+   */
+  async UpdateStatusBatch(inventoryIds: string[], status: 'active' | 'near_expiry' | 'expired'): Promise<number> {
+    const logger = GetLogger();
+    logger?.debug('InventoryRepository.UpdateStatusBatch - Executing query', { count: inventoryIds.length, status });
+    
+    const [affectedCount] = await Inventory.update(
+      { status },
+      {
+        where: {
+          id: {
+            [Op.in]: inventoryIds,
+          },
+        },
+      }
+    );
+    
+    logger?.info('InventoryRepository.UpdateStatusBatch - Query completed', { 
+      count: inventoryIds.length, 
+      affectedRows: affectedCount 
+    });
+    
+    return affectedCount;
   }
 }
 

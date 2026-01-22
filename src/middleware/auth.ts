@@ -90,3 +90,55 @@ export function RequireLevel(minLevel: number) {
   };
 }
 
+/**
+ * Middleware for internal API endpoints (e.g., cron jobs)
+ * Validates Basic Authentication with username and password from environment variables
+ * Uses INTERNAL_API_USERNAME and INTERNAL_API_PASSWORD environment variables
+ */
+export function InternalApiKeyMiddleware(req: Request, res: Response, next: NextFunction) {
+  const logger = GetLogger();
+  const expectedUsername = process.env.INTERNAL_API_USERNAME;
+  const expectedPassword = process.env.INTERNAL_API_PASSWORD;
+  
+  // If no credentials are configured, allow access (for development)
+  if (!expectedUsername || !expectedPassword) {
+    logger?.warn('InternalApiKeyMiddleware - No INTERNAL_API_USERNAME or INTERNAL_API_PASSWORD configured, allowing access');
+    return next();
+  }
+  
+  // Get Authorization header
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    logger?.warn('InternalApiKeyMiddleware - No Basic authentication provided');
+    res.setHeader('WWW-Authenticate', 'Basic realm="Internal API"');
+    return res.status(401).json({ error: 'Basic authentication required' });
+  }
+  
+  try {
+    // Decode Basic Auth credentials
+    const base64Credentials = authHeader.substring(6); // Remove 'Basic ' prefix
+    const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
+    const [username, password] = credentials.split(':');
+    
+    if (!username || !password) {
+      logger?.warn('InternalApiKeyMiddleware - Invalid Basic auth format');
+      res.setHeader('WWW-Authenticate', 'Basic realm="Internal API"');
+      return res.status(401).json({ error: 'Invalid authentication format' });
+    }
+    
+    if (username !== expectedUsername || password !== expectedPassword) {
+      logger?.warn('InternalApiKeyMiddleware - Invalid username or password');
+      res.setHeader('WWW-Authenticate', 'Basic realm="Internal API"');
+      return res.status(403).json({ error: 'Invalid username or password' });
+    }
+    
+    logger?.debug('InternalApiKeyMiddleware - Basic authentication validated', { username });
+    next();
+  } catch (error: any) {
+    logger?.error('InternalApiKeyMiddleware - Error validating credentials', error);
+    res.setHeader('WWW-Authenticate', 'Basic realm="Internal API"');
+    return res.status(401).json({ error: 'Authentication error' });
+  }
+}
+

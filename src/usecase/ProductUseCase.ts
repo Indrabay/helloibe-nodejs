@@ -47,11 +47,11 @@ export class ProductUseCase {
     return products;
   }
 
-  async GetAllProductsWithPagination(limit: number, offset: number, searchName?: string, searchSku?: string, storeId?: string): Promise<{ products: Product[]; total: number }> {
+  async GetAllProductsWithPagination(limit: number, offset: number, searchName?: string, searchSku?: string, storeId?: string, status?: string | string[]): Promise<{ products: Product[]; total: number }> {
     const logger = GetLogger();
-    logger?.debug('ProductUseCase.GetAllProductsWithPagination - Starting', { limit, offset, searchName, searchSku, storeId });
+    logger?.debug('ProductUseCase.GetAllProductsWithPagination - Starting', { limit, offset, searchName, searchSku, storeId, status });
     
-    const result = await this.productRepository.FindAllWithPagination(limit, offset, searchName, searchSku, storeId);
+    const result = await this.productRepository.FindAllWithPagination(limit, offset, searchName, searchSku, storeId, status);
     logger?.debug('ProductUseCase.GetAllProductsWithPagination - Completed', { count: result.products.length, total: result.total });
     return result;
   }
@@ -87,10 +87,6 @@ export class ProductUseCase {
     if (!data.selling_price) {
       logger?.error('ProductUseCase.CreateProduct - Selling price is required');
       throw new Error('Selling price is required');
-    }
-    if (!data.purchase_price) {
-      logger?.error('ProductUseCase.CreateProduct - Purchase price is required');
-      throw new Error('Purchase price is required');
     }
     
     // Get user's store
@@ -218,9 +214,6 @@ export class ProductUseCase {
       if (!data.selling_price) {
         throw new Error('Selling price is required');
       }
-      if (!data.purchase_price) {
-        throw new Error('Purchase price is required');
-      }
       
       // Get category - category_id should already be a number from the route handler
       const categoryId = typeof data.category_id === 'string' ? parseInt(data.category_id, 10) : data.category_id;
@@ -338,9 +331,6 @@ export class ProductUseCase {
       if (!data.selling_price) {
         throw new Error('Selling price is required');
       }
-      if (!data.purchase_price) {
-        throw new Error('Purchase price is required');
-      }
       
       // Get category - category_id should already be a number from the route handler
       const categoryId = typeof data.category_id === 'string' ? parseInt(data.category_id, 10) : data.category_id;
@@ -402,7 +392,6 @@ export class ProductUseCase {
             name: data.name,
             category_id: categoryId,
             selling_price: data.selling_price,
-            purchase_price: data.purchase_price,
             updated_by: userId,
           };
           const [affectedCount, updatedProductsArray] = await this.productRepository.Update(existingProduct.id, updateData);

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { InventoryUseCase } from '../usecase/InventoryUseCase';
 import { GetLogger } from '../utils/loggerContext';
-import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
+import { AuthenticateMiddleware, RequireLevel, InternalApiKeyMiddleware } from '../middleware/auth';
 import { formatModelWithUserRelations, formatModelsWithUserRelations } from '../utils/formatResponse';
 import multer from 'multer';
 import { parseBuffer, InventoryRow } from '../utils/fileParser';
@@ -139,6 +139,7 @@ router.post(
     RequireLevel(40),
     body('product_id').notEmpty().withMessage('Product ID is required').isUUID().withMessage('Invalid product ID format'),
     body('quantity').notEmpty().withMessage('Quantity is required').isFloat({ min: 0 }).withMessage('Quantity must be a non-negative number'),
+    body('purchase_price').optional().isFloat({ min: 0 }).withMessage('Purchase price must be a non-negative number'),
     body('location').optional().isString(),
     body('expiry_date').optional().isISO8601().withMessage('Invalid expiry date format'),
     body('store_id').optional().isUUID().withMessage('Invalid store ID format'),
@@ -233,6 +234,9 @@ router.post(
             quantity: row.quantity,
           };
           
+          if (row.purchase_price !== undefined && row.purchase_price !== null) {
+            inventoryItem.purchase_price = parseFloat(row.purchase_price.toString());
+          }
           if (row.location) {
             inventoryItem.location = row.location;
           }
@@ -267,6 +271,49 @@ router.post(
       logger?.error('Error creating inventory from file', error);
       res.status(400).json({ error: error.message });
     }
+  }
+);
+
+// POST /api/inventories/update-status - Update inventory status based on expiry dates (fire-and-forget)
+// This endpoint is designed to be called from cron jobs and processes in the background
+// Uses Basic Authentication with INTERNAL_API_USERNAME and INTERNAL_API_PASSWORD
+router.post(
+  '/update-status',
+  [
+    InternalApiKeyMiddleware,
+    query('batch_size').optional().isInt({ min: 1, max: 1000 }).withMessage('Batch size must be between 1 and 1000'),
+    query('near_expiry_days').optional().isInt({ min: 1, max: 365 }).withMessage('Near expiry days must be between 1 and 365'),
+    handleValidationErrors,
+  ],
+  async (req: Request, res: Response) => {
+    const logger = GetLogger();
+    const batchSize = req.query.batch_size ? parseInt(req.query.batch_size as string, 10) : 100;
+    const nearExpiryDays = req.query.near_expiry_days ? parseInt(req.query.near_expiry_days as string, 10) : 7;
+    
+    logger?.info('POST /api/inventory/update-status - Triggering inventory status update (fire-and-forget)', { batchSize, nearExpiryDays });
+    
+    // Return immediately - process in background
+    res.status(202).json({
+      message: 'Inventory status update process started in background',
+      batchSize,
+      nearExpiryDays,
+    });
+    
+    // Process in background (fire-and-forget)
+    // Use setImmediate to ensure response is sent before processing starts
+    setImmediate(async () => {
+      try {
+        logger?.info('Inventory status update - Background process started', { batchSize, nearExpiryDays });
+        const result = await inventoryUseCase.UpdateInventoryStatusBatch(batchSize, nearExpiryDays);
+        logger?.info('Inventory status update - Background process completed', { 
+          processed: result.processed, 
+          updated: result.updated 
+        });
+      } catch (error: any) {
+        logger?.error('Inventory status update - Background process failed', error, { batchSize, nearExpiryDays });
+        // Error is logged but not sent to client since response was already sent
+      }
+    });
   }
 );
 

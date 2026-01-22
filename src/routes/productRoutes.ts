@@ -6,7 +6,7 @@ import { CategoryRepository } from '../repository/CategoryRepository';
 import { GetLogger } from '../utils/loggerContext';
 import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
 import { formatModelWithUserRelations, formatModelsWithUserRelations } from '../utils/formatResponse';
-import { parseBuffer, ProductRow } from '../utils/fileParser';
+import { parseBuffer, ProductRow, productsToCSV } from '../utils/fileParser';
 
 const router = Router();
 const productUseCase = new ProductUseCase();
@@ -51,6 +51,21 @@ router.get(
     query('name').optional().isString().withMessage('Name must be a string'),
     query('sku').optional().isString().withMessage('SKU must be a string'),
     query('store_id').optional().isUUID().withMessage('Invalid store ID format'),
+    query('status').optional().custom((value) => {
+      if (typeof value === 'string') {
+        const validStatuses = ['active', 'near_expiry', 'expired'];
+        if (!validStatuses.includes(value)) {
+          throw new Error('Status must be active, near_expiry, or expired');
+        }
+      } else if (Array.isArray(value)) {
+        const validStatuses = ['active', 'near_expiry', 'expired'];
+        const invalidStatuses = value.filter((s: string) => !validStatuses.includes(s));
+        if (invalidStatuses.length > 0) {
+          throw new Error(`Invalid status values: ${invalidStatuses.join(', ')}`);
+        }
+      }
+      return true;
+    }),
     handleValidationErrors,
   ],
   async (req: Request, res: Response) => {
@@ -60,9 +75,18 @@ router.get(
     const searchName = req.query.name as string | undefined;
     const searchSku = req.query.sku as string | undefined;
     const storeId = req.query.store_id as string | undefined;
-    logger?.info('GET /api/products - Get all products with pagination and search', { limit, offset, searchName, searchSku, storeId });
+    // Handle status as single string or array
+    let status: string | string[] | undefined = undefined;
+    if (req.query.status) {
+      if (Array.isArray(req.query.status)) {
+        status = req.query.status as string[];
+      } else {
+        status = req.query.status as string;
+      }
+    }
+    logger?.info('GET /api/products - Get all products with pagination and search', { limit, offset, searchName, searchSku, storeId, status });
     try {
-      const { products, total } = await productUseCase.GetAllProductsWithPagination(limit, offset, searchName, searchSku, storeId);
+      const { products, total } = await productUseCase.GetAllProductsWithPagination(limit, offset, searchName, searchSku, storeId, status);
       logger?.info('Successfully retrieved products', { count: products.length, total, limit, offset, searchName, searchSku, storeId });
       res.json({
         data: formatModelsWithUserRelations(products),
@@ -72,6 +96,57 @@ router.get(
       });
     } catch (error: any) {
       logger?.error('Error retrieving products', error);
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// GET /api/products/download - Download all products as CSV
+router.get(
+  '/download',
+  [
+    AuthenticateMiddleware,
+    RequireLevel(1), // Any authenticated user can download
+  ],
+  async (req: Request, res: Response) => {
+    const logger = GetLogger();
+    logger?.info('GET /api/products/download - Download all products');
+    try {
+      const products = await productUseCase.GetAllProducts();
+      logger?.info('Successfully retrieved products for download', { count: products.length });
+      
+      // Log first product structure for debugging
+      if (products.length > 0) {
+        const firstProduct = products[0];
+        const productData = (firstProduct as any)?.toJSON ? (firstProduct as any).toJSON() : firstProduct;
+        logger?.debug('First product structure', { 
+          hasName: !!productData?.name,
+          hasCategory: !!productData?.category,
+          hasCategoryCode: !!productData?.category?.category_code,
+          productKeys: Object.keys(productData || {}),
+          productData: JSON.stringify(productData).substring(0, 200) // First 200 chars for debugging
+        });
+      } else {
+        logger?.warn('No products found for download');
+      }
+      
+      // Convert products to CSV
+      const csvContent = productsToCSV(products);
+      const lineCount = csvContent.split('\n').length;
+      logger?.debug('CSV content generated', { 
+        contentLength: csvContent.length, 
+        lineCount,
+        expectedLines: products.length + 1 // header + data rows
+      });
+      
+      // Set headers for file download
+      const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="products_${timestamp}.csv"`);
+      
+      res.send(csvContent);
+    } catch (error: any) {
+      logger?.error('Error downloading products', error);
       res.status(500).json({ error: error.message });
     }
   }
@@ -114,7 +189,6 @@ router.post(
     body('store_id').optional().isUUID().withMessage('Invalid store ID format'),
     body('sku').optional().isString(),
     body('selling_price').notEmpty().withMessage('Selling price is required').isFloat({ min: 0 }),
-    body('purchase_price').notEmpty().withMessage('Purchase price is required').isFloat({ min: 0 }),
     handleValidationErrors,
   ],
   async (req: Request, res: Response) => {
@@ -205,7 +279,6 @@ router.post(
             name: row.name,
             category_id: categoryId,
             selling_price: row.selling_price,
-            purchase_price: row.purchase_price,
           };
           if (row.sku) {
             productData.sku = row.sku;
@@ -256,7 +329,6 @@ router.put(
     body('category_id').optional().isInt(),
     body('sku').optional().isString(),
     body('selling_price').optional().isFloat({ min: 0 }),
-    body('purchase_price').optional().isFloat({ min: 0 }),
     handleValidationErrors,
   ],
   async (req: Request, res: Response) => {

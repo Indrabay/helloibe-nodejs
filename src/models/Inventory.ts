@@ -6,6 +6,7 @@ export interface InventoryAttributes {
   id: string;
   product_id: string;
   quantity: number;
+  purchase_price: number;
   location?: string | null;
   expiry_date?: Date | null;
   status: 'active' | 'near_expiry' | 'expired';
@@ -13,12 +14,13 @@ export interface InventoryAttributes {
   created_by?: string | null;
 }
 
-export interface InventoryCreationAttributes extends Optional<InventoryAttributes, 'id' | 'created_at' | 'location' | 'expiry_date' | 'status' | 'created_by'> {}
+export interface InventoryCreationAttributes extends Optional<InventoryAttributes, 'id' | 'created_at' | 'location' | 'expiry_date' | 'status' | 'created_by' | 'purchase_price'> {}
 
 export class Inventory extends Model<InventoryAttributes, InventoryCreationAttributes> implements InventoryAttributes {
   public id!: string;
   public product_id!: string;
   public quantity!: number;
+  public purchase_price!: number;
   public location!: string | null;
   public expiry_date!: Date | null;
   public status!: 'active' | 'near_expiry' | 'expired';
@@ -51,6 +53,10 @@ export const InitInventory = (sequelize: Sequelize): typeof Inventory => {
       },
       quantity: {
         type: DataTypes.FLOAT,
+        allowNull: false,
+      },
+      purchase_price: {
+        type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
       },
       location: {
