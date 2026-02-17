@@ -7,6 +7,7 @@ import { GetLogger } from '../utils/loggerContext';
 import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
 import { formatModelWithUserRelations, formatModelsWithUserRelations } from '../utils/formatResponse';
 import { parseBuffer, ProductRow } from '../utils/fileParser';
+import { convertToCSV, sendCSVResponse } from '../utils/csvExporter';
 
 const router = Router();
 const productUseCase = new ProductUseCase();
@@ -348,6 +349,72 @@ router.delete(
     } catch (error: any) {
       logger?.error('Error deleting products', error, { count: ids.length });
       res.status(400).json({ error: error.message });
+    }
+  }
+);
+
+// GET /api/products/download - Download all products as CSV (with filters)
+router.get(
+  '/download',
+  [
+    AuthenticateMiddleware,
+    RequireLevel(40),
+    query('name').optional().isString().withMessage('Name must be a string'),
+    query('sku').optional().isString().withMessage('SKU must be a string'),
+    query('store_id').optional().isUUID().withMessage('Invalid store ID format'),
+    handleValidationErrors,
+  ],
+  async (req: Request, res: Response) => {
+    const logger = GetLogger();
+    const userLevel = req.user?.level;
+    const searchName = req.query.name as string | undefined;
+    const searchSku = req.query.sku as string | undefined;
+    let storeId = req.query.store_id as string | undefined;
+    
+    logger?.info('GET /api/products/download - Download products as CSV', { searchName, searchSku, storeId, userLevel });
+    
+    try {
+      // For super admin, store_id is required
+      if (userLevel === 99) {
+        if (!storeId) {
+          return res.status(400).json({ error: 'Store ID is required for super admin' });
+        }
+      } else {
+        // For regular users, use their assigned store_id
+        if (!req.userModel?.store_id) {
+          return res.status(403).json({ error: 'User must have a store assigned' });
+        }
+        storeId = req.userModel.store_id;
+      }
+      
+      const products = await productUseCase.GetAllProductsWithFilters(searchName, searchSku, storeId);
+      
+      // Convert to CSV format
+      const headers = ['id', 'name', 'sku', 'category.name', 'category.category_code', 'store.name', 'store.store_code', 'selling_price', 'purchase_price', 'created_at', 'creator.name'];
+      const csvData = products.map(prod => {
+        const prodJson: any = prod.toJSON ? prod.toJSON() : prod;
+        return {
+          id: prodJson.id,
+          name: prodJson.name,
+          sku: prodJson.sku || '',
+          'category.name': prodJson.category?.name || '',
+          'category.category_code': prodJson.category?.category_code || '',
+          'store.name': prodJson.store?.name || '',
+          'store.store_code': prodJson.store?.store_code || '',
+          selling_price: prodJson.selling_price || '',
+          purchase_price: prodJson.purchase_price || '',
+          created_at: prodJson.created_at,
+          'creator.name': prodJson.creator?.name || '',
+        };
+      });
+      
+      const csvContent = convertToCSV(csvData, headers);
+      const filename = `products_${new Date().toISOString().split('T')[0]}.csv`;
+      sendCSVResponse(res, csvContent, filename);
+      logger?.info('Successfully downloaded products', { count: products.length });
+    } catch (error: any) {
+      logger?.error('Error downloading products', error);
+      res.status(500).json({ error: error.message });
     }
   }
 );

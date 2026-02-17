@@ -4,6 +4,7 @@ import { OrderUseCase } from '../usecase/OrderUseCase';
 import { GetLogger } from '../utils/loggerContext';
 import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
 import { formatModelWithUserRelations, formatModelsWithUserRelations } from '../utils/formatResponse';
+import { convertToCSV, sendCSVResponse } from '../utils/csvExporter';
 
 const router = Router();
 const orderUseCase = new OrderUseCase();
@@ -99,6 +100,88 @@ router.get(
       } else {
         res.status(500).json({ error: error.message });
       }
+    }
+  }
+);
+
+// GET /api/orders/download - Download all orders as CSV (with filters)
+router.get(
+  '/download',
+  [
+    AuthenticateMiddleware,
+    RequireLevel(40),
+    query('store_id').optional().isUUID().withMessage('Invalid store ID format'),
+    handleValidationErrors,
+  ],
+  async (req: Request, res: Response) => {
+    const logger = GetLogger();
+    const userLevel = req.user?.level;
+    let storeId = req.query.store_id as string | undefined;
+    
+    logger?.info('GET /api/orders/download - Download orders as CSV', { storeId, userLevel });
+    
+    try {
+      // For super admin, store_id is required
+      if (userLevel === 99) {
+        if (!storeId) {
+          return res.status(400).json({ error: 'Store ID is required for super admin' });
+        }
+      } else {
+        // For regular users, use their assigned store_id
+        if (!req.userModel?.store_id) {
+          return res.status(403).json({ error: 'User must have a store assigned' });
+        }
+        storeId = req.userModel.store_id;
+      }
+      
+      const orders = await orderUseCase.GetAllOrdersWithFilters(storeId);
+      
+      // Convert to CSV format - flatten order items
+      const headers = ['order_id', 'invoice_number', 'customer_name', 'store.name', 'store.store_code', 'total_price', 'created_at', 'creator.name', 'items'];
+      const csvData: any[] = [];
+      
+      orders.forEach(order => {
+        const orderJson: any = order.toJSON ? order.toJSON() : order;
+        const items = orderJson.orderItems || [];
+        
+        if (items.length === 0) {
+          // Order with no items
+          csvData.push({
+            order_id: orderJson.id,
+            invoice_number: orderJson.invoice_number || '',
+            customer_name: orderJson.customer_name || '',
+            'store.name': orderJson.store?.name || '',
+            'store.store_code': orderJson.store?.store_code || '',
+            total_price: orderJson.total_price || '',
+            created_at: orderJson.created_at,
+            'creator.name': orderJson.creator?.name || '',
+            items: '',
+          });
+        } else {
+          // One row per order item
+          items.forEach((item: any) => {
+            csvData.push({
+              order_id: orderJson.id,
+              invoice_number: orderJson.invoice_number || '',
+              customer_name: orderJson.customer_name || '',
+              'store.name': orderJson.store?.name || '',
+              'store.store_code': orderJson.store?.store_code || '',
+              total_price: orderJson.total_price || '',
+              created_at: orderJson.created_at,
+              'creator.name': orderJson.creator?.name || '',
+              items: `${item.product?.name || ''} (Qty: ${item.quantity}, Price: ${item.total_price})`,
+            });
+          });
+        }
+      });
+      
+      const csvContent = convertToCSV(csvData, headers);
+      const filename = `orders_${new Date().toISOString().split('T')[0]}.csv`;
+      sendCSVResponse(res, csvContent, filename);
+      logger?.info('Successfully downloaded orders', { count: orders.length });
+    } catch (error: any) {
+      logger?.error('Error downloading orders', error);
+      res.status(500).json({ error: error.message });
     }
   }
 );

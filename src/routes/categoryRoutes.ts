@@ -4,6 +4,7 @@ import { CategoryUseCase } from '../usecase/CategoryUseCase';
 import { GetLogger } from '../utils/loggerContext';
 import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
 import { formatModelWithUserRelations, formatModelsWithUserRelations } from '../utils/formatResponse';
+import { convertToCSV, sendCSVResponse } from '../utils/csvExporter';
 
 const router = Router();
 const categoryUseCase = new CategoryUseCase();
@@ -159,6 +160,45 @@ router.delete(
       } else {
         res.status(500).json({ error: error.message });
       }
+    }
+  }
+);
+
+// GET /api/categories/download - Download all categories as CSV
+router.get(
+  '/download',
+  [
+    AuthenticateMiddleware,
+    RequireLevel(40),
+    handleValidationErrors,
+  ],
+  async (req: Request, res: Response) => {
+    const logger = GetLogger();
+    logger?.info('GET /api/categories/download - Download categories as CSV');
+    try {
+      const categories = await categoryUseCase.GetAllCategoriesWithFilters();
+      
+      // Convert to CSV format
+      const headers = ['id', 'name', 'category_code', 'created_at', 'creator.name', 'updater.name'];
+      const csvData = categories.map(cat => {
+        const catJson: any = cat.toJSON ? cat.toJSON() : cat;
+        return {
+          id: catJson.id,
+          name: catJson.name,
+          category_code: catJson.category_code,
+          created_at: catJson.created_at,
+          'creator.name': catJson.creator?.name || '',
+          'updater.name': catJson.updater?.name || '',
+        };
+      });
+      
+      const csvContent = convertToCSV(csvData, headers);
+      const filename = `categories_${new Date().toISOString().split('T')[0]}.csv`;
+      sendCSVResponse(res, csvContent, filename);
+      logger?.info('Successfully downloaded categories', { count: categories.length });
+    } catch (error: any) {
+      logger?.error('Error downloading categories', error);
+      res.status(500).json({ error: error.message });
     }
   }
 );

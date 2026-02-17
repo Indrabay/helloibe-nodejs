@@ -259,5 +259,23 @@ export class InventoryUseCase {
     logger?.info('InventoryUseCase.CreateInventoryBatch - Completed', { count: inventory.length });
     return inventory;
   }
+
+  async GetAllInventoryWithFilters(productId?: string, status?: string | string[], storeId?: string, productName?: string, sku?: string, categoryId?: number | string, search?: string): Promise<Inventory[]> {
+    const logger = GetLogger();
+    logger?.debug('InventoryUseCase.GetAllInventoryWithFilters - Starting', { productId, status, storeId, productName, sku, categoryId, search });
+    
+    // Convert categoryId to number if it's a string
+    let categoryIdNum: number | undefined = undefined;
+    if (categoryId) {
+      categoryIdNum = typeof categoryId === 'string' ? parseInt(categoryId, 10) : categoryId;
+      if (isNaN(categoryIdNum)) {
+        throw new Error('Invalid category ID format');
+      }
+    }
+    
+    const inventory = await this.inventoryRepository.FindAllWithFilters(productId, status, productName, sku, categoryIdNum, search, storeId);
+    logger?.debug('InventoryUseCase.GetAllInventoryWithFilters - Completed', { count: inventory.length });
+    return inventory;
+  }
 }
 

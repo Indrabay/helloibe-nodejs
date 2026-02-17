@@ -18,6 +18,38 @@ export class ProductRepository {
     return products;
   }
 
+  async FindAllWithFilters(searchName?: string, searchSku?: string, storeId?: string): Promise<Product[]> {
+    const logger = GetLogger();
+    logger?.debug('ProductRepository.FindAllWithFilters - Executing query', { searchName, searchSku, storeId });
+    
+    // Build where clause for search
+    const where: any = {};
+    if (searchName) {
+      where.name = {
+        [Op.like]: `%${searchName}%`,
+      };
+    }
+    if (searchSku) {
+      where.sku = searchSku;
+    }
+    if (storeId) {
+      where.store_id = storeId;
+    }
+    
+    const products = await Product.findAll({
+      where,
+      order: [['created_at', 'DESC']],
+      include: [
+        { association: 'category', attributes: ['id', 'name', 'category_code'] },
+        { association: 'store', attributes: ['id', 'name', 'store_code'] },
+        { association: 'creator', attributes: ['id', 'name', 'email'] },
+        { association: 'updater', attributes: ['id', 'name', 'email'] },
+      ],
+    });
+    logger?.debug('ProductRepository.FindAllWithFilters - Query completed', { count: products.length });
+    return products;
+  }
+
   async FindAllWithPagination(limit: number, offset: number, searchName?: string, searchSku?: string, storeCode?: string): Promise<{ products: Product[]; total: number }> {
     const logger = GetLogger();
     logger?.debug('ProductRepository.FindAllWithPagination - Executing query', { limit, offset, searchName, searchSku, storeCode });

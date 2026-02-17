@@ -263,5 +263,117 @@ export class InventoryRepository {
     
     logger?.info('InventoryRepository.ReduceInventoryQuantity - Completed', { productId, quantityReduced: quantityToReduce });
   }
+
+  async FindAllWithFilters(productId?: string, status?: string | string[], productName?: string, sku?: string, categoryId?: number, search?: string, storeId?: string): Promise<Inventory[]> {
+    const logger = GetLogger();
+    logger?.debug('InventoryRepository.FindAllWithFilters - Executing query', { productId, status, productName, sku, categoryId, search, storeId });
+    
+    let where: any = {};
+    if (productId) {
+      where.product_id = productId;
+    }
+    if (status) {
+      if (Array.isArray(status) && status.length > 0) {
+        where.status = {
+          [Op.in]: status,
+        };
+      } else if (typeof status === 'string') {
+        where.status = status;
+      }
+    }
+    
+    // Build product filter conditions
+    let productWhere: any = {};
+    if (productName) {
+      productWhere.name = {
+        [Op.like]: `%${productName}%`,
+      };
+    }
+    if (sku) {
+      productWhere.sku = sku;
+    }
+    if (categoryId) {
+      productWhere.category_id = categoryId;
+    }
+    if (storeId) {
+      productWhere.store_id = storeId;
+    }
+    
+    // If search is provided, add OR conditions for product name (LIKE), SKU (exact), or category name (LIKE)
+    const needsCategoryInclude = !!search;
+    
+    if (search) {
+      // Build OR conditions for product (name LIKE or SKU exact)
+      const searchConditions: any[] = [
+        { name: { [Op.like]: `%${search}%` } },
+        { sku: search },
+      ];
+      
+      // If there are existing product filters, combine them
+      if (Object.keys(productWhere).length > 0) {
+        const existingConditions = { ...productWhere };
+        productWhere = {
+          [Op.and]: [
+            existingConditions,
+            { [Op.or]: searchConditions },
+          ],
+        };
+      } else {
+        productWhere = {
+          [Op.or]: searchConditions,
+        };
+      }
+      
+      // Add category name search to the main where clause
+      const searchOrConditions: any[] = [
+        { '$product.name$': { [Op.like]: `%${search}%` } },
+        { '$product.sku$': search },
+        { '$product.category.name$': { [Op.like]: `%${search}%` } },
+      ];
+      
+      // Combine with existing where conditions
+      if (Object.keys(where).length > 0) {
+        const existingWhere = { ...where };
+        where = {
+          [Op.and]: [
+            existingWhere,
+            { [Op.or]: searchOrConditions },
+          ],
+        };
+      } else {
+        where = {
+          [Op.or]: searchOrConditions,
+        };
+      }
+    }
+    
+    // Build includes array
+    const includes: any[] = [
+      { 
+        association: 'product', 
+        attributes: ['id', 'name', 'sku', 'category_id', 'selling_price', 'store_id'],
+        where: Object.keys(productWhere).length > 0 ? productWhere : undefined,
+        required: Object.keys(productWhere).length > 0 || needsCategoryInclude,
+        ...(needsCategoryInclude ? {
+          include: [
+            {
+              association: 'category',
+              attributes: ['id', 'name', 'category_code'],
+              required: false,
+            },
+          ],
+        } : {}),
+      },
+      { association: 'creator', attributes: ['id', 'name', 'email'] },
+    ];
+    
+    const inventory = await Inventory.findAll({
+      where,
+      order: [['created_at', 'DESC']],
+      include: includes,
+    });
+    logger?.debug('InventoryRepository.FindAllWithFilters - Query completed', { count: inventory.length });
+    return inventory;
+  }
 }
 

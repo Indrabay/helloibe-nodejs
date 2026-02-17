@@ -91,5 +91,33 @@ export class OrderRepository {
     }
   }
 
+  async FindAllWithFilters(storeId?: string): Promise<Order[]> {
+    const logger = GetLogger();
+    logger?.debug('OrderRepository.FindAllWithFilters - Executing query', { storeId });
+    
+    const where: any = {};
+    if (storeId) {
+      where.store_id = storeId;
+    }
+    
+    const orders = await Order.findAll({
+      where,
+      order: [['created_at', 'DESC']],
+      include: [
+        { association: 'creator', attributes: ['id', 'name', 'email'] },
+        { association: 'store', attributes: ['id', 'name', 'store_code'] },
+        {
+          association: 'orderItems',
+          attributes: ['id', 'product_id', 'quantity', 'total_price'],
+          include: [
+            { association: 'product', attributes: ['id', 'name', 'sku', 'selling_price'] },
+          ],
+        },
+      ],
+    });
+    logger?.debug('OrderRepository.FindAllWithFilters - Query completed', { count: orders.length });
+    return orders;
+  }
+
 }
 

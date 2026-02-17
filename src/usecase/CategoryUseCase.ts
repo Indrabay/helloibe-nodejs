@@ -17,6 +17,14 @@ export class CategoryUseCase {
     return categories;
   }
 
+  async GetAllCategoriesWithFilters(): Promise<Category[]> {
+    const logger = GetLogger();
+    logger?.debug('CategoryUseCase.GetAllCategoriesWithFilters - Starting');
+    const categories = await this.categoryRepository.FindAllWithFilters();
+    logger?.debug('CategoryUseCase.GetAllCategoriesWithFilters - Completed', { count: categories.length });
+    return categories;
+  }
+
   async GetAllCategoriesWithPagination(limit: number, offset: number): Promise<{ categories: Category[]; total: number }> {
     const logger = GetLogger();
     logger?.debug('CategoryUseCase.GetAllCategoriesWithPagination - Starting', { limit, offset });

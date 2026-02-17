@@ -7,6 +7,7 @@ import { formatModelWithUserRelations, formatModelsWithUserRelations } from '../
 import multer from 'multer';
 import { parseBuffer, InventoryRow } from '../utils/fileParser';
 import { ProductRepository } from '../repository/ProductRepository';
+import { convertToCSV, sendCSVResponse } from '../utils/csvExporter';
 
 const router = Router();
 const inventoryUseCase = new InventoryUseCase();
@@ -266,6 +267,100 @@ router.post(
     } catch (error: any) {
       logger?.error('Error creating inventory from file', error);
       res.status(400).json({ error: error.message });
+    }
+  }
+);
+
+// GET /api/inventory/download - Download all inventory as CSV (with filters)
+router.get(
+  '/download',
+  [
+    AuthenticateMiddleware,
+    RequireLevel(40),
+    query('product_id').optional().isUUID().withMessage('Invalid product ID format'),
+    query('product_name').optional().isString().withMessage('Product name must be a string'),
+    query('sku').optional().isString().withMessage('SKU must be a string'),
+    query('category_id').optional().isInt().withMessage('Category ID must be an integer'),
+    query('search').optional().isString().withMessage('Search must be a string'),
+    query('status').optional().custom((value) => {
+      if (typeof value === 'string') {
+        const validStatuses = ['active', 'near_expiry', 'expired'];
+        if (!validStatuses.includes(value)) {
+          throw new Error('Status must be active, near_expiry, or expired');
+        }
+      } else if (Array.isArray(value)) {
+        const validStatuses = ['active', 'near_expiry', 'expired'];
+        const invalidStatuses = value.filter((s: string) => !validStatuses.includes(s));
+        if (invalidStatuses.length > 0) {
+          throw new Error(`Invalid status values: ${invalidStatuses.join(', ')}`);
+        }
+      }
+      return true;
+    }),
+    query('store_id').optional().isUUID().withMessage('Invalid store ID format'),
+    handleValidationErrors,
+  ],
+  async (req: Request, res: Response) => {
+    const logger = GetLogger();
+    const userLevel = req.user?.level;
+    const productId = req.query.product_id as string | undefined;
+    const productName = req.query.product_name as string | undefined;
+    const sku = req.query.sku as string | undefined;
+    const categoryId = req.query.category_id ? parseInt(req.query.category_id as string, 10) : undefined;
+    const search = req.query.search as string | undefined;
+    let status: string | string[] | undefined = undefined;
+    if (req.query.status) {
+      if (Array.isArray(req.query.status)) {
+        status = req.query.status as string[];
+      } else {
+        status = req.query.status as string;
+      }
+    }
+    let storeId = req.query.store_id as string | undefined;
+    
+    logger?.info('GET /api/inventory/download - Download inventory as CSV', { productId, productName, sku, categoryId, search, status, storeId, userLevel });
+    
+    try {
+      // For super admin, store_id is required
+      if (userLevel === 99) {
+        if (!storeId) {
+          return res.status(400).json({ error: 'Store ID is required for super admin' });
+        }
+      } else {
+        // For regular users, use their assigned store_id
+        if (!req.userModel?.store_id) {
+          return res.status(403).json({ error: 'User must have a store assigned' });
+        }
+        storeId = req.userModel.store_id;
+      }
+      
+      const inventory = await inventoryUseCase.GetAllInventoryWithFilters(productId, status, storeId, productName, sku, categoryId, search);
+      
+      // Convert to CSV format
+      const headers = ['id', 'product.name', 'product.sku', 'product.category.name', 'quantity', 'location', 'expiry_date', 'status', 'created_at', 'creator.name'];
+      const csvData = inventory.map(inv => {
+        const invJson: any = inv.toJSON ? inv.toJSON() : inv;
+        return {
+          id: invJson.id,
+          'product.name': invJson.product?.name || '',
+          'product.sku': invJson.product?.sku || '',
+          'product.category.name': invJson.product?.category?.name || '',
+          quantity: invJson.quantity || '',
+          location: invJson.location || '',
+          expiry_date: invJson.expiry_date || '',
+          status: invJson.status || '',
+          created_at: invJson.created_at,
+          'creator.name': invJson.creator?.name || '',
+        };
+      });
+      
+      const csvContent = convertToCSV(csvData, headers);
+      const filename = `inventory_${new Date().toISOString().split('T')[0]}.csv`;
+      sendCSVResponse(res, csvContent, filename);
+      logger?.info('Successfully downloaded inventory', { count: inventory.length });
+    } catch (error: any) {
+      logger?.error('Error downloading inventory', error);
+      res.status(500).json({ error: error.message });
     }
   }
 );

@@ -15,6 +15,20 @@ export class CategoryRepository {
     return categories;
   }
 
+  async FindAllWithFilters(): Promise<Category[]> {
+    const logger = GetLogger();
+    logger?.debug('CategoryRepository.FindAllWithFilters - Executing query');
+    const categories = await Category.findAll({
+      order: [['created_at', 'DESC']],
+      include: [
+        { association: 'creator', attributes: ['id', 'name', 'email'] },
+        { association: 'updater', attributes: ['id', 'name', 'email'] },
+      ],
+    });
+    logger?.debug('CategoryRepository.FindAllWithFilters - Query completed', { count: categories.length });
+    return categories;
+  }
+
   async FindAllWithPagination(limit: number, offset: number): Promise<{ categories: Category[]; total: number }> {
     const logger = GetLogger();
     logger?.debug('CategoryRepository.FindAllWithPagination - Executing query', { limit, offset });

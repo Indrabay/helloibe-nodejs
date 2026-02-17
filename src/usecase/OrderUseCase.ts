@@ -200,5 +200,14 @@ export class OrderUseCase {
     logger?.debug('OrderUseCase.GetOrderById - Completed', { id });
     return order;
   }
+
+  async GetAllOrdersWithFilters(storeId?: string): Promise<Order[]> {
+    const logger = GetLogger();
+    logger?.debug('OrderUseCase.GetAllOrdersWithFilters - Starting', { storeId });
+    
+    const orders = await this.orderRepository.FindAllWithFilters(storeId);
+    logger?.debug('OrderUseCase.GetAllOrdersWithFilters - Completed', { count: orders.length });
+    return orders;
+  }
 }
 

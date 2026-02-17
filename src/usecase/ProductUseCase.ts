@@ -47,6 +47,14 @@ export class ProductUseCase {
     return products;
   }
 
+  async GetAllProductsWithFilters(searchName?: string, searchSku?: string, storeId?: string): Promise<Product[]> {
+    const logger = GetLogger();
+    logger?.debug('ProductUseCase.GetAllProductsWithFilters - Starting', { searchName, searchSku, storeId });
+    const products = await this.productRepository.FindAllWithFilters(searchName, searchSku, storeId);
+    logger?.debug('ProductUseCase.GetAllProductsWithFilters - Completed', { count: products.length });
+    return products;
+  }
+
   async GetAllProductsWithPagination(limit: number, offset: number, searchName?: string, searchSku?: string, storeId?: string): Promise<{ products: Product[]; total: number }> {
     const logger = GetLogger();
     logger?.debug('ProductUseCase.GetAllProductsWithPagination - Starting', { limit, offset, searchName, searchSku, storeId });
