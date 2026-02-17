@@ -1,5 +1,6 @@
 import { Order, OrderCreationAttributes } from '../models/Order';
 import { OrderItemCreationAttributes } from '../models/OrderItem';
+import { Product } from '../models/Product';
 import { OrderRepository } from '../repository/OrderRepository';
 import { ProductRepository } from '../repository/ProductRepository';
 import { StoreRepository } from '../repository/StoreRepository';
@@ -89,9 +90,16 @@ export class OrderUseCase {
       throw new Error('Store does not have a store_code');
     }
     
-    // Validate items and check inventory
+    // Validate items and check inventory, then reduce inventory and calculate purchase prices
     const orderItems: OrderItemCreationAttributes[] = [];
     let calculatedTotal = 0;
+    
+    // First pass: validate all items and calculate selling prices
+    const itemData: Array<{
+      item: CheckoutItem;
+      product: Product;
+      itemTotalPrice: number;
+    }> = [];
     
     for (const item of data.items) {
       if (!item.product_id) {
@@ -123,10 +131,10 @@ export class OrderUseCase {
       const itemTotalPrice = parseFloat(product.selling_price.toString()) * item.quantity;
       calculatedTotal += itemTotalPrice;
       
-      orderItems.push({
-        product_id: item.product_id,
-        quantity: item.quantity,
-        total_price: itemTotalPrice,
+      itemData.push({
+        item,
+        product,
+        itemTotalPrice,
       });
     }
     
@@ -134,6 +142,47 @@ export class OrderUseCase {
     if (Math.abs(calculatedTotal - data.grand_total) > 0.01) {
       logger?.error('OrderUseCase.Checkout - Grand total mismatch', { calculated: calculatedTotal, provided: data.grand_total });
       throw new Error(`Grand total mismatch. Calculated: ${calculatedTotal.toFixed(2)}, Provided: ${data.grand_total.toFixed(2)}`);
+    }
+    
+    // Second pass: reduce inventory and calculate purchase prices and profit
+    for (const itemInfo of itemData) {
+      try {
+        const usedInventory = await this.inventoryRepository.ReduceInventoryQuantity(itemInfo.item.product_id, itemInfo.item.quantity);
+        
+        // Calculate total purchase price from all inventory items used
+        let totalPurchasePrice = 0;
+        for (const inv of usedInventory) {
+          totalPurchasePrice += inv.purchasePrice * inv.quantity;
+        }
+        
+        // Round to 2 decimal places to match DECIMAL(10, 2)
+        totalPurchasePrice = Math.round(totalPurchasePrice * 100) / 100;
+        
+        // Calculate profit
+        const profit = Math.round((itemInfo.itemTotalPrice - totalPurchasePrice) * 100) / 100;
+        
+        // Create order item with all calculated values
+        orderItems.push({
+          product_id: itemInfo.item.product_id,
+          quantity: itemInfo.item.quantity,
+          total_price: itemInfo.itemTotalPrice,
+          purchase_price: totalPurchasePrice,
+          profit: profit,
+        });
+        
+        logger?.debug('OrderUseCase.Checkout - Reduced inventory and calculated profit', { 
+          productId: itemInfo.item.product_id, 
+          quantity: itemInfo.item.quantity,
+          purchasePrice: totalPurchasePrice,
+          profit: profit
+        });
+      } catch (error: any) {
+        logger?.error('OrderUseCase.Checkout - Failed to reduce inventory', error, { 
+          productId: itemInfo.item.product_id, 
+          quantity: itemInfo.item.quantity 
+        });
+        throw new Error(`Failed to reduce inventory for product ${itemInfo.item.product_id}: ${error.message}`);
+      }
     }
     
     // Generate invoice number
@@ -149,25 +198,6 @@ export class OrderUseCase {
     };
     
     const order = await this.orderRepository.Create(orderData, orderItems);
-    
-    // Reduce inventory quantity for each order item
-    for (const item of data.items) {
-      try {
-        await this.inventoryRepository.ReduceInventoryQuantity(item.product_id, item.quantity);
-        logger?.debug('OrderUseCase.Checkout - Reduced inventory', { 
-          productId: item.product_id, 
-          quantity: item.quantity 
-        });
-      } catch (error: any) {
-        logger?.error('OrderUseCase.Checkout - Failed to reduce inventory', error, { 
-          productId: item.product_id, 
-          quantity: item.quantity 
-        });
-        // Note: In a production system, you might want to rollback the order here
-        // For now, we'll log the error but the order is already created
-        throw new Error(`Failed to reduce inventory for product ${item.product_id}: ${error.message}`);
-      }
-    }
     
     logger?.info('OrderUseCase.Checkout - Completed', { id: order.id, invoice_number: order.invoice_number });
     return order;

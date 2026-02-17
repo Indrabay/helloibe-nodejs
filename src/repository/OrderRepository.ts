@@ -18,7 +18,7 @@ export class OrderRepository {
         { association: 'store', attributes: ['id', 'name', 'store_code'] },
         {
           association: 'orderItems',
-          attributes: ['id', 'product_id', 'quantity', 'total_price'],
+          attributes: ['id', 'product_id', 'quantity', 'total_price', 'purchase_price', 'profit'],
           include: [
             { association: 'product', attributes: ['id', 'name', 'sku', 'selling_price'] },
           ],
@@ -39,7 +39,7 @@ export class OrderRepository {
         { association: 'store', attributes: ['id', 'name', 'store_code'] },
         {
           association: 'orderItems',
-          attributes: ['id', 'product_id', 'quantity', 'total_price'],
+          attributes: ['id', 'product_id', 'quantity', 'total_price', 'purchase_price', 'profit'],
           include: [
             { association: 'product', attributes: ['id', 'name', 'sku', 'selling_price'] },
           ],

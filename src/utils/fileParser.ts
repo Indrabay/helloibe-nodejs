@@ -17,6 +17,7 @@ export interface InventoryRow {
   product_id?: string;
   sku?: string;
   quantity: number;
+  purchase_price?: number;
   location?: string;
   expiry_date?: string;
   store_id?: string;
@@ -76,14 +77,22 @@ export async function parseCSVInventory(filePath: string): Promise<InventoryRow[
     fs.createReadStream(filePath)
       .pipe(csv())
       .on('data', (data: any) => {
-        results.push({
+        const row: InventoryRow = {
           product_id: data.product_id || data.productId || data['Product ID'] || undefined,
           sku: data.sku || data.SKU || undefined,
           quantity: parseFloat(data.quantity || data.Quantity || '0'),
           location: data.location || data.Location || undefined,
           expiry_date: data.expiry_date || data.expiryDate || data['Expiry Date'] || undefined,
           store_id: data.store_id || data.storeId || data['Store ID'] || undefined,
-        });
+        };
+        
+        // Only include purchase_price if it has a value
+        const purchasePriceValue = data.purchase_price || data.purchasePrice || data['Purchase Price'];
+        if (purchasePriceValue !== undefined && purchasePriceValue !== null && purchasePriceValue !== '') {
+          row.purchase_price = parseFloat(purchasePriceValue.toString());
+        }
+        
+        results.push(row);
       })
       .on('end', () => {
         resolve(results);
@@ -106,14 +115,24 @@ export async function parseXLSXInventory(filePath: string): Promise<InventoryRow
   }
   const data = XLSX.utils.sheet_to_json(worksheet);
   
-  return (data as any[]).map((row: any) => ({
-    product_id: row.product_id || row.productId || row['Product ID'] || undefined,
-    sku: row.sku || row.SKU || undefined,
-    quantity: parseFloat(row.quantity || row.Quantity || '0'),
-    location: row.location || row.Location || undefined,
-    expiry_date: row.expiry_date || row.expiryDate || row['Expiry Date'] || undefined,
-    store_id: row.store_id || row.storeId || row['Store ID'] || undefined,
-  }));
+  return (data as any[]).map((row: any): InventoryRow => {
+    const inventoryRow: InventoryRow = {
+      product_id: row.product_id || row.productId || row['Product ID'] || undefined,
+      sku: row.sku || row.SKU || undefined,
+      quantity: parseFloat(row.quantity || row.Quantity || '0'),
+      location: row.location || row.Location || undefined,
+      expiry_date: row.expiry_date || row.expiryDate || row['Expiry Date'] || undefined,
+      store_id: row.store_id || row.storeId || row['Store ID'] || undefined,
+    };
+    
+    // Only include purchase_price if it has a value
+    const purchasePriceValue = row.purchase_price || row.purchasePrice || row['Purchase Price'];
+    if (purchasePriceValue !== undefined && purchasePriceValue !== null && purchasePriceValue !== '') {
+      inventoryRow.purchase_price = parseFloat(purchasePriceValue.toString());
+    }
+    
+    return inventoryRow;
+  });
 }
 
 export async function parseBuffer(buffer: Buffer, mimetype: string, type: 'product' | 'inventory' = 'product'): Promise<ProductRow[] | InventoryRow[]> {
@@ -151,5 +170,89 @@ export async function parseBuffer(buffer: Buffer, mimetype: string, type: 'produ
   } else {
     throw new Error(`Unsupported file type: ${mimetype}`);
   }
+}
+
+/**
+ * Convert products to CSV format
+ */
+export function productsToCSV(products: any[]): string {
+  // CSV header (purchase_price removed - now in inventory)
+  const headers = ['name', 'category_id', 'category_code', 'store_id', 'sku', 'selling_price'];
+  const csvRows: string[] = [headers.join(',')];
+
+  if (products.length === 0) {
+    return csvRows.join('\n');
+  }
+
+  // CSV rows
+  for (const product of products) {
+    if (!product) {
+      continue; // Skip null/undefined products
+    }
+    
+    // Handle Sequelize models - convert to plain object if needed
+    let productData: any;
+    if (product && typeof product.toJSON === 'function') {
+      try {
+        productData = product.toJSON();
+      } catch (e) {
+        // If toJSON fails, try to use the product directly
+        productData = product;
+      }
+    } else {
+      productData = product;
+    }
+    
+    // Ensure productData is an object
+    if (!productData || typeof productData !== 'object') {
+      continue;
+    }
+    
+    // Extract values safely - handle both nested and flat structures
+    const name = productData.name || '';
+    const categoryId = productData.category_id || '';
+    // Handle category - could be nested object or flat
+    const category = productData.category || {};
+    const categoryCode = category.category_code || productData.category_code || '';
+    const storeId = productData.store_id || '';
+    const sku = productData.sku || '';
+    
+    // Handle Decimal types from Sequelize - they might need toString() or valueOf()
+    let sellingPrice = '0';
+    if (productData.selling_price != null) {
+      if (typeof productData.selling_price === 'object' && productData.selling_price.toString) {
+        sellingPrice = productData.selling_price.toString();
+      } else {
+        sellingPrice = String(productData.selling_price);
+      }
+    }
+    
+    const row = [
+      escapeCSVField(name),
+      escapeCSVField(String(categoryId)),
+      escapeCSVField(categoryCode),
+      escapeCSVField(String(storeId)),
+      escapeCSVField(sku),
+      escapeCSVField(sellingPrice),
+    ];
+    csvRows.push(row.join(','));
+  }
+
+  return csvRows.join('\n');
+}
+
+/**
+ * Escape CSV field values (handle commas, quotes, and newlines)
+ */
+function escapeCSVField(field: string): string {
+  if (field === null || field === undefined) {
+    return '';
+  }
+  const stringField = String(field);
+  // If field contains comma, quote, or newline, wrap in quotes and escape quotes
+  if (stringField.includes(',') || stringField.includes('"') || stringField.includes('\n')) {
+    return `"${stringField.replace(/"/g, '""')}"`;
+  }
+  return stringField;
 }
 

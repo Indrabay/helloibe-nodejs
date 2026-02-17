@@ -52,7 +52,7 @@ export class ProductRepository {
 
   async FindAllWithPagination(limit: number, offset: number, searchName?: string, searchSku?: string, storeCode?: string): Promise<{ products: Product[]; total: number }> {
     const logger = GetLogger();
-    logger?.debug('ProductRepository.FindAllWithPagination - Executing query', { limit, offset, searchName, searchSku, storeCode });
+    logger?.debug('ProductRepository.FindAllWithPagination - Executing query', { limit, offset, searchName, searchSku, storeCode, status });
     
     // Build where clause for search
     const where: any = {};
@@ -70,17 +70,40 @@ export class ProductRepository {
       };
     }
     
+    // Build include array
+    const include: any[] = [
+      { association: 'category', attributes: ['id', 'name', 'category_code'] },
+      { association: 'store', attributes: ['id', 'name', 'store_code'] },
+      { association: 'creator', attributes: ['id', 'name', 'email'] },
+      { association: 'updater', attributes: ['id', 'name', 'email'] },
+    ];
+    
+    // If status is provided, filter products that have inventory with that status
+    if (status) {
+      const inventoryWhere: any = {};
+      if (Array.isArray(status) && status.length > 0) {
+        inventoryWhere.status = {
+          [Op.in]: status,
+        };
+      } else if (typeof status === 'string') {
+        inventoryWhere.status = status;
+      }
+      
+      include.push({
+        association: 'inventory',
+        attributes: ['id', 'status'],
+        where: inventoryWhere,
+        required: true, // INNER JOIN - only products with inventory matching the status
+      });
+    }
+    
     const { count, rows } = await Product.findAndCountAll({
       where,
       limit,
       offset,
       order: [['created_at', 'DESC']],
-      include: [
-        { association: 'category', attributes: ['id', 'name', 'category_code'] },
-        { association: 'store', attributes: ['id', 'name', 'store_code'] },
-        { association: 'creator', attributes: ['id', 'name', 'email'] },
-        { association: 'updater', attributes: ['id', 'name', 'email'] },
-      ],
+      include,
+      distinct: true, // Important when using includes to avoid duplicate counts
     });
     logger?.debug('ProductRepository.FindAllWithPagination - Query completed', { count, returned: rows.length });
     return { products: rows, total: count };

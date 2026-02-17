@@ -134,8 +134,15 @@ export class InventoryUseCase {
       }
     }
     
+    // Purchase price is required in inventory data (no longer in product)
+    if (data.purchase_price === undefined || data.purchase_price === null) {
+      logger?.error('InventoryUseCase.CreateInventory - Purchase price is required');
+      throw new Error('Purchase price is required');
+    }
+    
     const inventoryData: InventoryCreationAttributes = {
       ...data,
+      purchase_price: data.purchase_price,
       status,
       created_by: userId,
     };
@@ -248,8 +255,14 @@ export class InventoryUseCase {
         }
       }
       
+      // Purchase price is required in inventory data (no longer in product)
+      if (data.purchase_price === undefined || data.purchase_price === null) {
+        throw new Error(`Purchase price is required for inventory item: ${product.sku || product.name || data.product_id}`);
+      }
+      
       inventoryToCreate.push({
         ...data,
+        purchase_price: data.purchase_price,
         status,
         created_by: userId,
       });

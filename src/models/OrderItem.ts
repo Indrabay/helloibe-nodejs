@@ -7,6 +7,8 @@ export interface OrderItemAttributes {
   product_id: string;
   quantity: number;
   total_price: number;
+  purchase_price: number;
+  profit: number;
   created_at: Date;
 }
 
@@ -18,6 +20,8 @@ export class OrderItem extends Model<OrderItemAttributes, OrderItemCreationAttri
   public product_id!: string;
   public quantity!: number;
   public total_price!: number;
+  public purchase_price!: number;
+  public profit!: number;
   public created_at!: Date;
 
   // Associations
@@ -59,6 +63,14 @@ export const InitOrderItem = (sequelize: Sequelize): typeof OrderItem => {
         allowNull: false,
       },
       total_price: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+      },
+      purchase_price: {
+        type: DataTypes.DECIMAL(10, 2),
+        allowNull: false,
+      },
+      profit: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
       },

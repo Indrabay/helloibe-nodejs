@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { InventoryUseCase } from '../usecase/InventoryUseCase';
 import { GetLogger } from '../utils/loggerContext';
-import { AuthenticateMiddleware, RequireLevel } from '../middleware/auth';
+import { AuthenticateMiddleware, RequireLevel, InternalApiKeyMiddleware } from '../middleware/auth';
 import { formatModelWithUserRelations, formatModelsWithUserRelations } from '../utils/formatResponse';
 import multer from 'multer';
 import { parseBuffer, InventoryRow } from '../utils/fileParser';
@@ -140,6 +140,7 @@ router.post(
     RequireLevel(40),
     body('product_id').notEmpty().withMessage('Product ID is required').isUUID().withMessage('Invalid product ID format'),
     body('quantity').notEmpty().withMessage('Quantity is required').isFloat({ min: 0 }).withMessage('Quantity must be a non-negative number'),
+    body('purchase_price').optional().isFloat({ min: 0 }).withMessage('Purchase price must be a non-negative number'),
     body('location').optional().isString(),
     body('expiry_date').optional().isISO8601().withMessage('Invalid expiry date format'),
     body('store_id').optional().isUUID().withMessage('Invalid store ID format'),
@@ -234,6 +235,9 @@ router.post(
             quantity: row.quantity,
           };
           
+          if (row.purchase_price !== undefined && row.purchase_price !== null) {
+            inventoryItem.purchase_price = parseFloat(row.purchase_price.toString());
+          }
           if (row.location) {
             inventoryItem.location = row.location;
           }

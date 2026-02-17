@@ -8,7 +8,6 @@ export interface ProductAttributes {
   store_id?: string | null;
   sku: string;
   selling_price: number;
-  purchase_price: number;
   created_at: Date;
   updated_at: Date;
   created_by?: string | null;
@@ -24,7 +23,6 @@ export class Product extends Model<ProductAttributes, ProductCreationAttributes>
   public store_id!: string | null;
   public sku!: string;
   public selling_price!: number;
-  public purchase_price!: number;
   public created_at!: Date;
   public updated_at!: Date;
   public created_by!: string | null;
@@ -68,10 +66,6 @@ export const InitProduct = (sequelize: Sequelize): typeof Product => {
         unique: true,
       },
       selling_price: {
-        type: DataTypes.DECIMAL(10, 2),
-        allowNull: false,
-      },
-      purchase_price: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
       },
