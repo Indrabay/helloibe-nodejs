@@ -102,57 +102,6 @@ router.get(
   }
 );
 
-// GET /api/products/download - Download all products as CSV
-router.get(
-  '/download',
-  [
-    AuthenticateMiddleware,
-    RequireLevel(1), // Any authenticated user can download
-  ],
-  async (req: Request, res: Response) => {
-    const logger = GetLogger();
-    logger?.info('GET /api/products/download - Download all products');
-    try {
-      const products = await productUseCase.GetAllProducts();
-      logger?.info('Successfully retrieved products for download', { count: products.length });
-      
-      // Log first product structure for debugging
-      if (products.length > 0) {
-        const firstProduct = products[0];
-        const productData = (firstProduct as any)?.toJSON ? (firstProduct as any).toJSON() : firstProduct;
-        logger?.debug('First product structure', { 
-          hasName: !!productData?.name,
-          hasCategory: !!productData?.category,
-          hasCategoryCode: !!productData?.category?.category_code,
-          productKeys: Object.keys(productData || {}),
-          productData: JSON.stringify(productData).substring(0, 200) // First 200 chars for debugging
-        });
-      } else {
-        logger?.warn('No products found for download');
-      }
-      
-      // Convert products to CSV
-      const csvContent = productsToCSV(products);
-      const lineCount = csvContent.split('\n').length;
-      logger?.debug('CSV content generated', { 
-        contentLength: csvContent.length, 
-        lineCount,
-        expectedLines: products.length + 1 // header + data rows
-      });
-      
-      // Set headers for file download
-      const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-      res.setHeader('Content-Disposition', `attachment; filename="products_${timestamp}.csv"`);
-      
-      res.send(csvContent);
-    } catch (error: any) {
-      logger?.error('Error downloading products', error);
-      res.status(500).json({ error: error.message });
-    }
-  }
-);
-
 // GET /api/products/:id - Get product by ID
 router.get(
   '/:id',
