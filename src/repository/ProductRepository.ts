@@ -50,9 +50,9 @@ export class ProductRepository {
     return products;
   }
 
-  async FindAllWithPagination(limit: number, offset: number, searchName?: string, searchSku?: string, storeCode?: string): Promise<{ products: Product[]; total: number }> {
+  async FindAllWithPagination(limit: number, offset: number, searchName?: string, searchSku?: string, storeId?: string, status?: string | string[]): Promise<{ products: Product[]; total: number }> {
     const logger = GetLogger();
-    logger?.debug('ProductRepository.FindAllWithPagination - Executing query', { limit, offset, searchName, searchSku, storeCode, status });
+    logger?.debug('ProductRepository.FindAllWithPagination - Executing query', { limit, offset, searchName, searchSku, storeId, status });
     
     // Build where clause for search
     const where: any = {};
@@ -63,11 +63,9 @@ export class ProductRepository {
     }
     if (searchSku) {
       where.sku = searchSku;
-    } else if (storeCode) {
-      // Filter by store_code pattern in SKU (SKU format: store_code-category_code-sequence)
-      where.sku = {
-        [Op.like]: `${storeCode}-%`,
-      };
+    }
+    if (storeId) {
+      where.store_id = storeId;
     }
     
     // Build include array

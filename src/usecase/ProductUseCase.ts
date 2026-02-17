@@ -55,7 +55,7 @@ export class ProductUseCase {
     return products;
   }
 
-  async GetAllProductsWithPagination(limit: number, offset: number, searchName?: string, searchSku?: string, storeId?: string): Promise<{ products: Product[]; total: number }> {
+  async GetAllProductsWithPagination(limit: number, offset: number, searchName?: string, searchSku?: string, storeId?: string, status?: string | string[]): Promise<{ products: Product[]; total: number }> {
     const logger = GetLogger();
     logger?.debug('ProductUseCase.GetAllProductsWithPagination - Starting', { limit, offset, searchName, searchSku, storeId, status });
     
