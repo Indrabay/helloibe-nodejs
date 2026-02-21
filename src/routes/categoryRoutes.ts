@@ -78,7 +78,7 @@ router.post(
   '/',
   [
     AuthenticateMiddleware,
-    RequireLevel(51),
+    RequireLevel(40),
     body('name').notEmpty().withMessage('Name is required').isString(),
     body('category_code').notEmpty().withMessage('Category code is required').isString(),
     handleValidationErrors,
